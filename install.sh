@@ -145,155 +145,448 @@ get_menu_choice() {
     done
 }
 
-# Interactive prompts
-echo -e "${YELLOW}=== Configuration ===${NC}"
-echo ""
+# Function to detect existing installation
+detect_existing_install() {
+    if [ -d "$HOME/.config/hypr" ] && [ -d "$HOME/.config/quickshell" ]; then
+        return 0  # Installation exists
+    else
+        return 1  # No installation
+    fi
+}
 
-# Machine type
-echo -e "${BLUE}Select machine type:${NC}"
-echo "1) Desktop (3 monitors)"
-echo "2) Laptop (built-in + external)"
-MACHINE_TYPE=$(get_menu_choice "Enter choice" 1 2)
+# Function to get current theme from existing config
+get_current_theme() {
+    if [ -f "$HOME/.config/quickshell/theme.conf" ]; then
+        # Try to detect theme from colors
+        local bg_color=$(grep "background = " "$HOME/.config/quickshell/theme.conf" | cut -d'=' -f2 | tr -d ' ')
+        case "$bg_color" in
+            "#1e1e2e") echo "catppuccin" ;;
+            "#282828") echo "gruvbox" ;;
+            "#2e3440") echo "nord" ;;
+            "#1a1b26") echo "tokyo-night" ;;
+            *) echo "unknown" ;;
+        esac
+    else
+        echo "unknown"
+    fi
+}
 
-case $MACHINE_TYPE in
-    1) MONITOR_CONFIG="monitors-desktop.lua" ;;
-    2) MONITOR_CONFIG="monitors-laptop.lua" ;;
-esac
-
-# Color theme
-echo ""
-echo -e "${BLUE}Select color theme:${NC}"
-echo "1) Catppuccin Mocha (purple/blue)"
-echo "2) Gruvbox Dark (warm retro)"
-echo "3) Nord (cool blue-gray)"
-echo "4) Tokyo Night (modern dark blue)"
-THEME_CHOICE=$(get_menu_choice "Enter choice" 1 4)
-
-case $THEME_CHOICE in
-    1) THEME="catppuccin" ;;
-    2) THEME="gruvbox" ;;
-    3) THEME="nord" ;;
-    4) THEME="tokyo-night" ;;
-esac
-
-# Keyboard layout
-echo ""
-KEYBOARD_LAYOUT=$(get_input "Keyboard layout" "pt")
-
-echo ""
-echo -e "${GREEN}Configuration saved:${NC}"
-echo "  Machine: $MACHINE_TYPE"
-echo "  Theme: $THEME"
-echo "  Keyboard: $KEYBOARD_LAYOUT"
-echo ""
-
-log "Configuration: Machine=$MACHINE_TYPE, Theme=$THEME, Keyboard=$KEYBOARD_LAYOUT"
-
-# Backup existing configs
-echo -e "${YELLOW}=== Backing Up Existing Configs ===${NC}"
-echo ""
-backup_configs "hypr"
-backup_configs "quickshell"
-backup_configs "rofi"
-backup_configs "kitty"
-backup_configs "swaync"
-backup_configs "gtk-3.0"
-echo ""
-
-# Install packages
-echo -e "${YELLOW}=== Installing Packages ===${NC}"
-echo ""
-
-# Update system
-echo -e "${BLUE}Updating system...${NC}"
-sudo pacman -Syu --noconfirm
-
-# Install base packages
-echo -e "${BLUE}Installing base packages...${NC}"
-while IFS= read -r package; do
-    # Skip comments and empty lines
-    [[ "$package" =~ ^#.*$ ]] && continue
-    [[ -z "$package" ]] && continue
+# Function to install packages
+install_packages() {
+    echo -e "${YELLOW}=== Installing Packages ===${NC}"
+    echo ""
     
-    install_package "$package"
-done < "$SCRIPT_DIR/packages.list"
+    # Update system
+    echo -e "${BLUE}Updating system...${NC}"
+    sudo pacman -Syu --noconfirm
+    
+    # Install base packages
+    echo -e "${BLUE}Installing base packages...${NC}"
+    while IFS= read -r package; do
+        # Skip comments and empty lines
+        [[ "$package" =~ ^#.*$ ]] && continue
+        [[ -z "$package" ]] && continue
+        
+        install_package "$package"
+    done < "$SCRIPT_DIR/packages.list"
+    
+    # Install yay (AUR helper) if not present
+    if ! command -v yay &> /dev/null; then
+        echo -e "${BLUE}Installing yay (AUR helper)...${NC}"
+        bash "$SCRIPT_DIR/scripts/install-yay.sh"
+    fi
+    
+    # Install AUR packages
+    echo -e "${BLUE}Installing AUR packages...${NC}"
+    while IFS= read -r package; do
+        [[ "$package" =~ ^#.*$ ]] && continue
+        [[ -z "$package" ]] && continue
+        
+        install_aur_package "$package"
+    done < "$SCRIPT_DIR/aur-packages.list"
+    
+    log "Packages installed"
+}
 
-# Install yay (AUR helper) if not present
-if ! command -v yay &> /dev/null; then
-    echo -e "${BLUE}Installing yay (AUR helper)...${NC}"
-    bash "$SCRIPT_DIR/scripts/install-yay.sh"
+# Function to install configs
+install_configs() {
+    echo -e "${YELLOW}=== Installing Configurations ===${NC}"
+    echo ""
+    
+    # Create config directories
+    echo -e "${BLUE}Creating config directories...${NC}"
+    mkdir -p ~/.config/{hypr,quickshell,rofi,kitty,swaync,gtk-3.0}
+    
+    # Copy Hyprland config
+    echo -e "${BLUE}Installing Hyprland config...${NC}"
+    cp -r "$SCRIPT_DIR/configs/hyprland/"* ~/.config/hypr/
+    cp "$SCRIPT_DIR/configs/hyprland/$MONITOR_CONFIG" ~/.config/hypr/monitors.lua
+    log "Hyprland config installed"
+    
+    # Copy Quickshell config
+    echo -e "${BLUE}Installing Quickshell config...${NC}"
+    cp -r "$SCRIPT_DIR/configs/quickshell/"* ~/.config/quickshell/
+    log "Quickshell config installed"
+    
+    # Copy Rofi config
+    echo -e "${BLUE}Installing Rofi config...${NC}"
+    cp -r "$SCRIPT_DIR/configs/rofi/"* ~/.config/rofi/
+    log "Rofi config installed"
+    
+    # Copy Kitty config
+    echo -e "${BLUE}Installing Kitty config...${NC}"
+    cp -r "$SCRIPT_DIR/configs/kitty/"* ~/.config/kitty/
+    log "Kitty config installed"
+    
+    # Copy swaync config
+    echo -e "${BLUE}Installing swaync config...${NC}"
+    cp -r "$SCRIPT_DIR/configs/swaync/"* ~/.config/swaync/
+    log "swaync config installed"
+    
+    # Copy GTK config
+    echo -e "${BLUE}Installing GTK config...${NC}"
+    cp -r "$SCRIPT_DIR/configs/gtk-3.0/"* ~/.config/gtk-3.0/
+    log "GTK config installed"
+}
+
+# Function to apply theme
+apply_theme() {
+    echo ""
+    echo -e "${YELLOW}=== Applying Theme ===${NC}"
+    echo ""
+    bash "$SCRIPT_DIR/scripts/apply-theme.sh" "$THEME"
+    log "Theme applied: $THEME"
+}
+
+# Function to configure keyboard layout
+configure_keyboard() {
+    echo -e "${BLUE}Setting keyboard layout to: $KEYBOARD_LAYOUT${NC}"
+    sed -i "s/kb_layout = .*/kb_layout = $KEYBOARD_LAYOUT/" ~/.config/hypr/hyprland.lua
+    log "Keyboard layout set to: $KEYBOARD_LAYOUT"
+}
+
+# Function to enable services
+enable_services() {
+    echo ""
+    echo -e "${YELLOW}=== Enabling Services ===${NC}"
+    echo ""
+    bash "$SCRIPT_DIR/scripts/enable-services.sh"
+    log "Services enabled"
+}
+
+# Function for fresh installation
+fresh_install() {
+    log "Starting fresh installation"
+    
+    # Interactive prompts
+    echo -e "${YELLOW}=== Configuration ===${NC}"
+    echo ""
+    
+    # Machine type
+    echo -e "${BLUE}Select machine type:${NC}"
+    echo "1) Desktop (3 monitors)"
+    echo "2) Laptop (built-in + external)"
+    MACHINE_TYPE=$(get_menu_choice "Enter choice" 1 2)
+    
+    case $MACHINE_TYPE in
+        1) MONITOR_CONFIG="monitors-desktop.lua" ;;
+        2) MONITOR_CONFIG="monitors-laptop.lua" ;;
+    esac
+    
+    # Color theme
+    echo ""
+    echo -e "${BLUE}Select color theme:${NC}"
+    echo "1) Catppuccin Mocha (purple/blue)"
+    echo "2) Gruvbox Dark (warm retro)"
+    echo "3) Nord (cool blue-gray)"
+    echo "4) Tokyo Night (modern dark blue)"
+    THEME_CHOICE=$(get_menu_choice "Enter choice" 1 4)
+    
+    case $THEME_CHOICE in
+        1) THEME="catppuccin" ;;
+        2) THEME="gruvbox" ;;
+        3) THEME="nord" ;;
+        4) THEME="tokyo-night" ;;
+    esac
+    
+    # Keyboard layout
+    echo ""
+    KEYBOARD_LAYOUT=$(get_input "Keyboard layout" "pt")
+    
+    echo ""
+    echo -e "${GREEN}Configuration saved:${NC}"
+    echo "  Machine: $MACHINE_TYPE"
+    echo "  Theme: $THEME"
+    echo "  Keyboard: $KEYBOARD_LAYOUT"
+    echo ""
+    
+    log "Configuration: Machine=$MACHINE_TYPE, Theme=$THEME, Keyboard=$KEYBOARD_LAYOUT"
+    
+    # Backup existing configs
+    echo -e "${YELLOW}=== Backing Up Existing Configs ===${NC}"
+    echo ""
+    backup_configs "hypr"
+    backup_configs "quickshell"
+    backup_configs "rofi"
+    backup_configs "kitty"
+    backup_configs "swaync"
+    backup_configs "gtk-3.0"
+    echo ""
+    
+    # Install packages
+    install_packages
+    
+    # Install configs
+    install_configs
+    
+    # Apply theme
+    apply_theme
+    
+    # Configure keyboard
+    configure_keyboard
+    
+    # Enable services
+    enable_services
+    
+    # Make scripts executable
+    chmod +x ~/.config/rofi/launcher/launcher.sh 2>/dev/null || true
+}
+
+# Function for update installation
+update_install() {
+    log "Starting update installation"
+    
+    # Detect current settings
+    CURRENT_THEME=$(get_current_theme)
+    echo -e "${BLUE}Detected current theme: $CURRENT_THEME${NC}"
+    echo ""
+    
+    # Ask what to update
+    echo -e "${YELLOW}=== Update Options ===${NC}"
+    echo ""
+    echo "What would you like to update?"
+    echo "1) Configs only (recommended)"
+    echo "2) Configs and packages"
+    echo "3) Change theme"
+    echo "4) Change keyboard layout"
+    echo "5) All of the above"
+    UPDATE_CHOICE=$(get_menu_choice "Enter choice" 1 5)
+    
+    case $UPDATE_CHOICE in
+        1)
+            # Backup and update configs only
+            echo -e "${YELLOW}=== Backing Up Existing Configs ===${NC}"
+            echo ""
+            backup_configs "hypr"
+            backup_configs "quickshell"
+            backup_configs "rofi"
+            backup_configs "kitty"
+            backup_configs "swaync"
+            backup_configs "gtk-3.0"
+            echo ""
+            
+            # Ask for machine type
+            echo -e "${BLUE}Select machine type:${NC}"
+            echo "1) Desktop (3 monitors)"
+            echo "2) Laptop (built-in + external)"
+            MACHINE_TYPE=$(get_menu_choice "Enter choice" 1 2)
+            
+            case $MACHINE_TYPE in
+                1) MONITOR_CONFIG="monitors-desktop.lua" ;;
+                2) MONITOR_CONFIG="monitors-laptop.lua" ;;
+            esac
+            
+            # Use current theme
+            THEME="$CURRENT_THEME"
+            if [ "$THEME" = "unknown" ]; then
+                echo ""
+                echo -e "${BLUE}Select color theme:${NC}"
+                echo "1) Catppuccin Mocha (purple/blue)"
+                echo "2) Gruvbox Dark (warm retro)"
+                echo "3) Nord (cool blue-gray)"
+                echo "4) Tokyo Night (modern dark blue)"
+                THEME_CHOICE=$(get_menu_choice "Enter choice" 1 4)
+                
+                case $THEME_CHOICE in
+                    1) THEME="catppuccin" ;;
+                    2) THEME="gruvbox" ;;
+                    3) THEME="nord" ;;
+                    4) THEME="tokyo-night" ;;
+                esac
+            fi
+            
+            # Get current keyboard layout
+            KEYBOARD_LAYOUT=$(grep "kb_layout = " ~/.config/hypr/hyprland.lua | cut -d'"' -f2)
+            if [ -z "$KEYBOARD_LAYOUT" ]; then
+                KEYBOARD_LAYOUT=$(get_input "Keyboard layout" "pt")
+            fi
+            
+            install_configs
+            apply_theme
+            configure_keyboard
+            ;;
+            
+        2)
+            # Backup and update configs and packages
+            echo -e "${YELLOW}=== Backing Up Existing Configs ===${NC}"
+            echo ""
+            backup_configs "hypr"
+            backup_configs "quickshell"
+            backup_configs "rofi"
+            backup_configs "kitty"
+            backup_configs "swaync"
+            backup_configs "gtk-3.0"
+            echo ""
+            
+            # Ask for machine type
+            echo -e "${BLUE}Select machine type:${NC}"
+            echo "1) Desktop (3 monitors)"
+            echo "2) Laptop (built-in + external)"
+            MACHINE_TYPE=$(get_menu_choice "Enter choice" 1 2)
+            
+            case $MACHINE_TYPE in
+                1) MONITOR_CONFIG="monitors-desktop.lua" ;;
+                2) MONITOR_CONFIG="monitors-laptop.lua" ;;
+            esac
+            
+            # Use current theme
+            THEME="$CURRENT_THEME"
+            if [ "$THEME" = "unknown" ]; then
+                echo ""
+                echo -e "${BLUE}Select color theme:${NC}"
+                echo "1) Catppuccin Mocha (purple/blue)"
+                echo "2) Gruvbox Dark (warm retro)"
+                echo "3) Nord (cool blue-gray)"
+                echo "4) Tokyo Night (modern dark blue)"
+                THEME_CHOICE=$(get_menu_choice "Enter choice" 1 4)
+                
+                case $THEME_CHOICE in
+                    1) THEME="catppuccin" ;;
+                    2) THEME="gruvbox" ;;
+                    3) THEME="nord" ;;
+                    4) THEME="tokyo-night" ;;
+                esac
+            fi
+            
+            # Get current keyboard layout
+            KEYBOARD_LAYOUT=$(grep "kb_layout = " ~/.config/hypr/hyprland.lua | cut -d'"' -f2)
+            if [ -z "$KEYBOARD_LAYOUT" ]; then
+                KEYBOARD_LAYOUT=$(get_input "Keyboard layout" "pt")
+            fi
+            
+            install_packages
+            install_configs
+            apply_theme
+            configure_keyboard
+            enable_services
+            ;;
+            
+        3)
+            # Change theme only
+            echo ""
+            echo -e "${BLUE}Select color theme:${NC}"
+            echo "1) Catppuccin Mocha (purple/blue)"
+            echo "2) Gruvbox Dark (warm retro)"
+            echo "3) Nord (cool blue-gray)"
+            echo "4) Tokyo Night (modern dark blue)"
+            THEME_CHOICE=$(get_menu_choice "Enter choice" 1 4)
+            
+            case $THEME_CHOICE in
+                1) THEME="catppuccin" ;;
+                2) THEME="gruvbox" ;;
+                3) THEME="nord" ;;
+                4) THEME="tokyo-night" ;;
+            esac
+            
+            apply_theme
+            ;;
+            
+        4)
+            # Change keyboard layout only
+            KEYBOARD_LAYOUT=$(get_input "Keyboard layout" "pt")
+            configure_keyboard
+            ;;
+            
+        5)
+            # Full update
+            # Backup and update everything
+            echo -e "${YELLOW}=== Backing Up Existing Configs ===${NC}"
+            echo ""
+            backup_configs "hypr"
+            backup_configs "quickshell"
+            backup_configs "rofi"
+            backup_configs "kitty"
+            backup_configs "swaync"
+            backup_configs "gtk-3.0"
+            echo ""
+            
+            # Ask for machine type
+            echo -e "${BLUE}Select machine type:${NC}"
+            echo "1) Desktop (3 monitors)"
+            echo "2) Laptop (built-in + external)"
+            MACHINE_TYPE=$(get_menu_choice "Enter choice" 1 2)
+            
+            case $MACHINE_TYPE in
+                1) MONITOR_CONFIG="monitors-desktop.lua" ;;
+                2) MONITOR_CONFIG="monitors-laptop.lua" ;;
+            esac
+            
+            # Ask for theme
+            echo ""
+            echo -e "${BLUE}Select color theme:${NC}"
+            echo "1) Catppuccin Mocha (purple/blue)"
+            echo "2) Gruvbox Dark (warm retro)"
+            echo "3) Nord (cool blue-gray)"
+            echo "4) Tokyo Night (modern dark blue)"
+            THEME_CHOICE=$(get_menu_choice "Enter choice" 1 4)
+            
+            case $THEME_CHOICE in
+                1) THEME="catppuccin" ;;
+                2) THEME="gruvbox" ;;
+                3) THEME="nord" ;;
+                4) THEME="tokyo-night" ;;
+            esac
+            
+            # Ask for keyboard layout
+            KEYBOARD_LAYOUT=$(get_input "Keyboard layout" "pt")
+            
+            install_packages
+            install_configs
+            apply_theme
+            configure_keyboard
+            enable_services
+            ;;
+    esac
+    
+    # Make scripts executable
+    chmod +x ~/.config/rofi/launcher/launcher.sh 2>/dev/null || true
+}
+
+# Main menu
+echo -e "${YELLOW}=== Main Menu ===${NC}"
+echo ""
+
+if detect_existing_install; then
+    echo -e "${GREEN}Existing installation detected${NC}"
+    echo ""
+    echo "What would you like to do?"
+    echo "1) Fresh installation (backup and reinstall everything)"
+    echo "2) Update existing installation"
+    INSTALL_MODE=$(get_menu_choice "Enter choice" 1 2)
+else
+    echo -e "${YELLOW}No existing installation detected${NC}"
+    echo ""
+    echo "Starting fresh installation..."
+    INSTALL_MODE=1
 fi
 
-# Install AUR packages
-echo -e "${BLUE}Installing AUR packages...${NC}"
-while IFS= read -r package; do
-    [[ "$package" =~ ^#.*$ ]] && continue
-    [[ -z "$package" ]] && continue
-    
-    install_aur_package "$package"
-done < "$SCRIPT_DIR/aur-packages.list"
-
-# Copy configurations
-echo ""
-echo -e "${YELLOW}=== Installing Configurations ===${NC}"
 echo ""
 
-# Create config directories
-echo -e "${BLUE}Creating config directories...${NC}"
-mkdir -p ~/.config/{hypr,quickshell,rofi,kitty,swaync,gtk-3.0}
-
-# Copy Hyprland config
-echo -e "${BLUE}Installing Hyprland config...${NC}"
-cp -r "$SCRIPT_DIR/configs/hyprland/"* ~/.config/hypr/
-cp "$SCRIPT_DIR/configs/hyprland/$MONITOR_CONFIG" ~/.config/hypr/monitors.lua
-log "Hyprland config installed"
-
-# Copy Quickshell config
-echo -e "${BLUE}Installing Quickshell config...${NC}"
-cp -r "$SCRIPT_DIR/configs/quickshell/"* ~/.config/quickshell/
-log "Quickshell config installed"
-
-# Copy Rofi config
-echo -e "${BLUE}Installing Rofi config...${NC}"
-cp -r "$SCRIPT_DIR/configs/rofi/"* ~/.config/rofi/
-log "Rofi config installed"
-
-# Copy Kitty config
-echo -e "${BLUE}Installing Kitty config...${NC}"
-cp -r "$SCRIPT_DIR/configs/kitty/"* ~/.config/kitty/
-log "Kitty config installed"
-
-# Copy swaync config
-echo -e "${BLUE}Installing swaync config...${NC}"
-cp -r "$SCRIPT_DIR/configs/swaync/"* ~/.config/swaync/
-log "swaync config installed"
-
-# Copy GTK config
-echo -e "${BLUE}Installing GTK config...${NC}"
-cp -r "$SCRIPT_DIR/configs/gtk-3.0/"* ~/.config/gtk-3.0/
-log "GTK config installed"
-
-# Apply theme
-echo ""
-echo -e "${YELLOW}=== Applying Theme ===${NC}"
-echo ""
-bash "$SCRIPT_DIR/scripts/apply-theme.sh" "$THEME"
-log "Theme applied: $THEME"
-
-# Update keyboard layout in Hyprland config
-echo -e "${BLUE}Setting keyboard layout to: $KEYBOARD_LAYOUT${NC}"
-sed -i "s/kb_layout = .*/kb_layout = $KEYBOARD_LAYOUT/" ~/.config/hypr/hyprland.lua
-log "Keyboard layout set to: $KEYBOARD_LAYOUT"
-
-# Enable services
-echo ""
-echo -e "${YELLOW}=== Enabling Services ===${NC}"
-echo ""
-bash "$SCRIPT_DIR/scripts/enable-services.sh"
-log "Services enabled"
-
-# Make scripts executable
-chmod +x ~/.config/rofi/launcher/launcher.sh 2>/dev/null || true
+# Execute chosen mode
+case $INSTALL_MODE in
+    1) fresh_install ;;
+    2) update_install ;;
+esac
 
 # Cleanup temp directory if we created one
 if [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ]; then
