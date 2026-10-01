@@ -47,9 +47,9 @@ fi
 echo -e "${GREEN}✓ Repository downloaded${NC}"
 echo ""
 
-# Run the installer from work directory
+# Run the installer from work directory with terminal input
 cd "$WORK_DIR"
-./install.sh
+./install.sh < /dev/tty
 EXIT_CODE=$?
 
 # Cleanup
