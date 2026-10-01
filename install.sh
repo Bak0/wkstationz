@@ -1,18 +1,19 @@
 #!/bin/bash
 
-# Arch Setup - Automated Arch Linux Desktop Installer
-# Repository: https://github.com/Bak0/wkstationz
-# Usage: curl -fsSL https://raw.githubusercontent.com/Bak0/wkstationz/main/install.sh | bash
-# Or: git clone https://github.com/Bak0/wkstationz.git && cd wkstationz && ./install.sh
+# Main installer script - assumes it's running from a cloned repository
+# Usage: ./install.sh (after cloning the repo)
 
 set -e
 
-# Colors for output
+# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
+
+# Get script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Logging
 LOG_FILE="/tmp/wkstationz-install.log"
@@ -22,6 +23,13 @@ log() {
 
 # Error handling
 trap 'echo -e "${RED}Error on line $LINENO. Check $LOG_FILE for details.${NC}"' ERR
+
+echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
+echo -e "${BLUE}║     Arch Setup - Desktop Installer     ║${NC}"
+echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
+echo ""
+
+log "Starting installation from $SCRIPT_DIR"
 
 # Check if running as root
 if [ "$EUID" -eq 0 ]; then
@@ -42,38 +50,6 @@ fi
 
 echo -e "${GREEN}✓ Sudo privileges obtained${NC}"
 echo ""
-
-# Determine script directory
-# If running from piped curl, download the repo first
-if [ ! -t 0 ] || [ "${BASH_SOURCE[0]}" = "/dev/stdin" ] || [ "${BASH_SOURCE[0]}" = "/proc/self/fd/0" ]; then
-    echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║     Arch Setup - Desktop Installer     ║${NC}"
-    echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
-    echo ""
-    
-    # Check if git is available
-    if ! command -v git &> /dev/null; then
-        echo -e "${YELLOW}Git not found, installing...${NC}"
-        pacman -S --noconfirm git
-    fi
-    
-    # Download repository
-    TEMP_DIR=$(mktemp -d)
-    echo -e "${BLUE}Downloading repository to $TEMP_DIR...${NC}"
-    git clone https://github.com/Bak0/wkstationz.git "$TEMP_DIR"
-    
-    # Re-execute from downloaded location with proper stdin
-    exec bash "$TEMP_DIR/install.sh"
-else
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-fi
-
-echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║     Arch Setup - Desktop Installer     ║${NC}"
-echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
-echo ""
-
-log "Starting installation from $SCRIPT_DIR"
 
 # Function to backup existing configs
 backup_configs() {
@@ -523,14 +499,6 @@ case $INSTALL_MODE in
     2) update_install ;;
     *) echo -e "${RED}Invalid choice${NC}"; exit 1 ;;
 esac
-
-# Cleanup temp directory if we're running from /tmp (downloaded instance)
-if [[ "$SCRIPT_DIR" == /tmp/* ]] && [ -d "$SCRIPT_DIR" ]; then
-    echo ""
-    echo -e "${BLUE}Cleaning up temporary files...${NC}"
-    rm -rf "$SCRIPT_DIR"
-    log "Cleaned up temp directory"
-fi
 
 # Completion message
 echo ""
