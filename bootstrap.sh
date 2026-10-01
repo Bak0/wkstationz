@@ -37,9 +37,9 @@ fi
 echo -e "${GREEN}✓ Repository downloaded${NC}"
 echo ""
 
-# Run the actual installer
+# Run the actual installer with proper terminal input
 cd "$TEMP_DIR"
-./install.sh
+./install.sh < /dev/tty
 
 # Cleanup
 cd /
