@@ -54,7 +54,7 @@ echo ""
 echo -e "${BLUE}Select machine type:${NC}"
 echo "1) Desktop (3 monitors)"
 echo "2) Laptop (built-in + external)"
-read -p "Enter choice [1-2]: " MACHINE_TYPE
+read -p "Enter choice [1-2]: " MACHINE_TYPE < /dev/tty
 
 case $MACHINE_TYPE in
     1) MONITOR_CONFIG="monitors-desktop.lua" ;;
@@ -69,7 +69,7 @@ echo "1) Catppuccin Mocha (purple/blue)"
 echo "2) Gruvbox Dark (warm retro)"
 echo "3) Nord (cool blue-gray)"
 echo "4) Tokyo Night (modern dark blue)"
-read -p "Enter choice [1-4]: " THEME_CHOICE
+read -p "Enter choice [1-4]: " THEME_CHOICE < /dev/tty
 
 case $THEME_CHOICE in
     1) THEME="catppuccin" ;;
@@ -81,7 +81,7 @@ esac
 
 # Keyboard layout
 echo ""
-read -p "Keyboard layout [default: pt]: " KEYBOARD_LAYOUT
+read -p "Keyboard layout [default: pt]: " KEYBOARD_LAYOUT < /dev/tty
 KEYBOARD_LAYOUT=${KEYBOARD_LAYOUT:-pt}
 
 echo ""
