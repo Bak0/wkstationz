@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # Main installer script - version-based with interactive prompts
-# Usage: ./install.sh
+# Usage: ./install.sh (from the cloned repository directory)
+# Or use: curl -fsSL https://raw.githubusercontent.com/Bak0/wkstationz/main/bootstrap.sh | bash
 
 set -e
 
@@ -22,20 +23,32 @@ echo -e "${BLUE}║   wkstationz v$VERSION - Installer     ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
 echo ""
 
-# Get script directory - use pwd since we should be in the right directory
-SCRIPT_DIR="$(pwd)"
+# Get script directory - handle both direct execution and sourced execution
+if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
+    # Script is being sourced
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+else
+    # Script is being executed
+    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+fi
 
-# Debug output
-echo "DEBUG: SCRIPT_DIR = $SCRIPT_DIR"
-echo "DEBUG: Current directory = $(pwd)"
-echo "DEBUG: BASH_SOURCE[0] = ${BASH_SOURCE[0]}"
-echo ""
-
-# Validate required files exist
+# Validate we're in the right directory
 if [ ! -f "$SCRIPT_DIR/packages.list" ]; then
     echo -e "${RED}Error: packages.list not found in $SCRIPT_DIR${NC}"
-    echo "Contents of $SCRIPT_DIR:"
-    ls -la "$SCRIPT_DIR"
+    echo ""
+    echo "This script must be run from the cloned repository directory."
+    echo "Current directory: $(pwd)"
+    echo "Script location: $SCRIPT_DIR"
+    echo ""
+    echo "If you're using curl, make sure you're running bootstrap.sh, not install.sh directly."
+    echo ""
+    echo "Correct usage:"
+    echo "  curl -fsSL https://raw.githubusercontent.com/Bak0/wkstationz/main/bootstrap.sh | bash"
+    echo ""
+    echo "Or clone and run manually:"
+    echo "  git clone https://github.com/Bak0/wkstationz.git"
+    echo "  cd wkstationz"
+    echo "  ./install.sh"
     exit 1
 fi
 

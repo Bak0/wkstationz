@@ -39,8 +39,15 @@ echo ""
 
 # Run the installer (not piped, so stdin works normally)
 cd "$TEMP_DIR"
-echo "DEBUG: Running install.sh from $(pwd)"
-ls -la install.sh packages.list
+
+# Verify files exist
+if [ ! -f "install.sh" ] || [ ! -f "packages.list" ]; then
+    echo -e "${RED}Error: Required files not found in cloned repository${NC}"
+    cd /
+    rm -rf "$TEMP_DIR"
+    exit 1
+fi
+
 ./install.sh
 EXIT_CODE=$?
 
