@@ -1,500 +1,161 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
-# Main installer script - location-independent
-# Can be run from anywhere, will set up work directory in /tmp
-# Usage: ./install.sh (from anywhere)
+readonly RED='\033[0;31m' GREEN='\033[0;32m' YELLOW='\033[1;33m' BLUE='\033[0;34m' NC='\033[0m'
+readonly INSTALLED_VERSION_FILE="$HOME/.config/wkstationz/VERSION"
 
-set -e
+fail() { printf '%b\n' "${RED}Error: $*${NC}" >&2; exit 1; }
+if ! { exec 3<>/dev/tty; } 2>/dev/null; then fail "No interactive terminal found. Run from a terminal session."; fi
 
-# Version
-VERSION="1.0.0"
-INSTALLED_VERSION_FILE="$HOME/.config/wkstationz/VERSION"
-
-# Working directory
-WORK_DIR="/tmp/wkstationz-work"
-
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
-
-# Show version immediately
-echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║   wkstationz v$VERSION - Installer     ║${NC}"
-echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
-echo ""
-
-# Function to check if all required files exist
-check_files() {
-    local dir=$1
-    [ -f "$dir/packages.list" ] && \
-    [ -f "$dir/aur-packages.list" ] && \
-    [ -f "$dir/scripts/install-yay.sh" ] && \
-    [ -f "$dir/scripts/apply-theme.sh" ] && \
-    [ -f "$dir/scripts/enable-services.sh" ] && \
-    [ -d "$dir/configs/hyprland" ] && \
-    [ -d "$dir/configs/quickshell" ] && \
-    [ -d "$dir/configs/rofi" ] && \
-    [ -d "$dir/configs/kitty" ] && \
-    [ -d "$dir/configs/swaync" ] && \
-    [ -d "$dir/configs/gtk-3.0" ] && \
-    [ -d "$dir/themes" ]
-}
-
-# Function to set up work directory
-setup_work_dir() {
-    # Clean up any existing work directory
-    if [ -d "$WORK_DIR" ]; then
-        echo -e "${YELLOW}Cleaning up previous work directory...${NC}"
-        rm -rf "$WORK_DIR"
-    fi
-    
-    # Create work directory
-    mkdir -p "$WORK_DIR"
-    echo -e "${BLUE}Setting up work directory: $WORK_DIR${NC}"
-    
-    # Check if we're already in a valid repository
-    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    
-    if check_files "$script_dir"; then
-        echo -e "${GREEN}✓ Running from valid repository${NC}"
-        # Copy files to work directory
-        cp -r "$script_dir"/* "$WORK_DIR"/
-    else
-        echo -e "${YELLOW}Required files not found in current location${NC}"
-        echo -e "${BLUE}Downloading repository...${NC}"
-        
-        # Check if git is available
-        if ! command -v git &> /dev/null; then
-            echo -e "${YELLOW}Git not found, installing...${NC}"
-            sudo pacman -S --noconfirm git
-        fi
-        
-        # Clone repository
-        if ! git clone https://github.com/Bak0/wkstationz.git "$WORK_DIR" 2>/dev/null; then
-            echo -e "${RED}Failed to clone repository${NC}"
-            rm -rf "$WORK_DIR"
-            exit 1
-        fi
-    fi
-    
-    echo -e "${GREEN}✓ Work directory ready${NC}"
-    echo ""
-}
-
-# Set up work directory
-setup_work_dir
-
-# Change to work directory
-cd "$WORK_DIR"
-SCRIPT_DIR="$WORK_DIR"
-
-# Logging
-LOG_FILE="/tmp/wkstationz-install.log"
-log() {
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
-}
-
-# Error handling
-trap 'echo -e "${RED}Error on line $LINENO. Check $LOG_FILE for details.${NC}"' ERR
-
-log "Starting installation v$VERSION"
-
-# Check if running as root
-if [ "$EUID" -eq 0 ]; then
-    echo -e "${RED}Error: Do not run this script as root${NC}"
-    exit 1
-fi
-
-# Request sudo credentials upfront
-echo -e "${BLUE}Requesting sudo privileges...${NC}"
-if ! sudo -v; then
-    echo -e "${RED}Failed to obtain sudo privileges${NC}"
-    exit 1
-fi
-
-# Keep sudo credentials alive in background
-(while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &)
-
-echo -e "${GREEN}✓ Sudo privileges obtained${NC}"
-echo ""
-
-# Determine install mode based on version
-INSTALL_MODE=""
-
-if [ -f "$INSTALLED_VERSION_FILE" ]; then
-    INSTALLED_VERSION=$(cat "$INSTALLED_VERSION_FILE")
-    echo -e "${BLUE}Detected installed version: $INSTALLED_VERSION${NC}"
-    
-    if [ "$INSTALLED_VERSION" = "$VERSION" ]; then
-        echo -e "${YELLOW}Same version detected.${NC}"
-        echo ""
-        echo "1) Update configs (force-update)"
-        echo "2) Fresh installation (force-install)"
-        echo "3) Exit"
-        read -p "Choose option [1-3]: " choice
-        
-        case $choice in
-            1) INSTALL_MODE="update" ;;
-            2) INSTALL_MODE="install" ;;
-            3) 
-                cd /
-                rm -rf "$WORK_DIR"
-                exit 0 
-                ;;
-            *) 
-                echo -e "${RED}Invalid choice${NC}"
-                cd /
-                rm -rf "$WORK_DIR"
-                exit 1 
-                ;;
-        esac
-    else
-        # Compare versions (simple string comparison for now)
-        if [ "$VERSION" \> "$INSTALLED_VERSION" ]; then
-            echo -e "${GREEN}New version available: $VERSION > $INSTALLED_VERSION${NC}"
-            INSTALL_MODE="update"
-        else
-            echo -e "${YELLOW}Installed version is newer: $INSTALLED_VERSION > $VERSION${NC}"
-            echo ""
-            echo "1) Downgrade (force-install)"
-            echo "2) Exit"
-            read -p "Choose option [1-2]: " choice
-            
-            case $choice in
-                1) INSTALL_MODE="install" ;;
-                2) 
-                    cd /
-                    rm -rf "$WORK_DIR"
-                    exit 0 
-                    ;;
-                *) 
-                    echo -e "${RED}Invalid choice${NC}"
-                    cd /
-                    rm -rf "$WORK_DIR"
-                    exit 1 
-                    ;;
-            esac
-        fi
-    fi
+SOURCE_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+if [[ -n "${WKSTATIONZ_WORK_DIR:-}" ]]; then
+    SCRIPT_DIR="$WKSTATIONZ_WORK_DIR"
+    CLEAN_WORK_DIR=0
 else
-    echo -e "${GREEN}No existing installation detected${NC}"
-    INSTALL_MODE="install"
+    [[ -f "$SOURCE_DIR/packages.list" && -f "$SOURCE_DIR/VERSION" ]] || fail "packages.list and VERSION must be present beside install.sh. Clone the complete repository, not just install.sh."
+    SCRIPT_DIR=$(mktemp -d /tmp/wkstationz.XXXXXX)
+    CLEAN_WORK_DIR=1
+    cp -a "$SOURCE_DIR"/. "$SCRIPT_DIR"/
+fi
+for required in \
+    VERSION packages.list aur-packages.list \
+    scripts/install-yay.sh scripts/apply-theme.sh scripts/enable-services.sh \
+    configs/hyprland/hyprland.lua configs/hyprland/keybinds.lua \
+    configs/hyprland/monitors-desktop.lua configs/hyprland/monitors-laptop.lua \
+    configs/quickshell/config.qml configs/quickshell/Bar.qml configs/quickshell/SettingsPanel.qml \
+    configs/rofi/launcher/launcher.sh configs/kitty/kitty.conf \
+    configs/swaync/config.json configs/gtk-3.0/settings.ini; do
+    [[ -f "$SCRIPT_DIR/$required" ]] || fail "Repository is incomplete: missing $required. Clone the complete wkstationz repository."
+done
+if [[ "$CLEAN_WORK_DIR" == 1 ]]; then
+    trap 'rm -rf -- "$SCRIPT_DIR"' EXIT
+fi
+cd "$SCRIPT_DIR"
+VERSION=$(cat "$SCRIPT_DIR/VERSION")
+printf '%b\n' "${BLUE}wkstationz v$VERSION${NC}"
+
+prompt_choice() {
+    local prompt="$1" allowed="$2" answer
+    while true; do
+        printf '%s' "$prompt" >/dev/tty
+        IFS= read -r -u 3 answer || fail "Terminal input closed while waiting for a choice."
+        answer="${answer//[[:space:]]/}"
+        if [[ "$answer" =~ $allowed ]]; then REPLY="$answer"; return; fi
+        printf '%b\n' "${YELLOW}Please enter one of the listed choices.${NC}" >/dev/tty
+    done
+}
+
+INSTALL_MODE="${WKSTATIONZ_MODE:-}"
+if [[ -z "$INSTALL_MODE" ]]; then
+    installed=""
+    [[ -f "$INSTALLED_VERSION_FILE" ]] && IFS= read -r installed < "$INSTALLED_VERSION_FILE" || true
+    if [[ -z "$installed" ]]; then
+        printf '%s\n' "No installed version found." "1) Install" "2) Update/reapply setup" "3) Exit" >/dev/tty
+        prompt_choice "Choose [1-3]: " '^[1-3]$'
+        case "$REPLY" in 1) INSTALL_MODE=install ;; 2) INSTALL_MODE=update ;; 3) exit 0 ;; esac
+    elif [[ "$installed" == "$VERSION" ]]; then
+        printf 'Installed version %s is current.\n' "$installed" >/dev/tty
+        printf '%s\n' "1) Update/reapply setup" "2) Exit" >/dev/tty
+        prompt_choice "Choose [1-2]: " '^[1-2]$'
+        [[ "$REPLY" == 1 ]] || exit 0
+        INSTALL_MODE=update
+    elif [[ "$(printf '%s\n' "$installed" "$VERSION" | sort -V | tail -n1)" == "$VERSION" ]]; then
+        INSTALL_MODE=update
+    else
+        printf 'Installed version %s is newer than %s.\n' "$installed" "$VERSION" >/dev/tty
+        printf '%s\n' "1) Reinstall/downgrade" "2) Exit" >/dev/tty
+        prompt_choice "Choose [1-2]: " '^[1-2]$'
+        [[ "$REPLY" == 1 ]] || exit 0
+        INSTALL_MODE=install
+    fi
 fi
 
-echo ""
-echo -e "${BLUE}Installation mode: $INSTALL_MODE${NC}"
-echo ""
-
-# Interactive: Machine type
-echo -e "${YELLOW}=== Machine Type ===${NC}"
-echo "1) Desktop (3 monitors)"
-echo "2) Laptop (built-in + external)"
-read -p "Choose option [1-2]: " machine_choice
-
-case $machine_choice in
-    1)
-        MACHINE_TYPE="desktop"
-        MONITOR_CONFIG="monitors-desktop.lua"
-        ;;
-    2)
-        MACHINE_TYPE="laptop"
-        MONITOR_CONFIG="monitors-laptop.lua"
-        ;;
-    *)
-        echo -e "${RED}Invalid choice${NC}"
-        cd /
-        rm -rf "$WORK_DIR"
-        exit 1
-        ;;
-esac
-
-echo -e "${GREEN}✓ Machine type: $MACHINE_TYPE${NC}"
-echo ""
-
-# Interactive: Theme (default to catppuccin)
-echo -e "${YELLOW}=== Color Theme ===${NC}"
-echo "1) Catppuccin Mocha (purple/blue) [DEFAULT]"
-echo "2) Gruvbox Dark (warm retro)"
-echo "3) Nord (cool blue-gray)"
-echo "4) Tokyo Night (modern dark blue)"
-read -p "Choose option [1-4, or press Enter for default]: " theme_choice
-
-case $theme_choice in
-    1|"") THEME="catppuccin" ;;
-    2) THEME="gruvbox" ;;
-    3) THEME="nord" ;;
-    4) THEME="tokyo-night" ;;
-    *)
-        echo -e "${RED}Invalid choice, using default${NC}"
-        THEME="catppuccin"
-        ;;
-esac
-
-echo -e "${GREEN}✓ Theme: $THEME${NC}"
-echo ""
-
-# Interactive: Keyboard layout
-echo -e "${YELLOW}=== Keyboard Layout ===${NC}"
-read -p "Keyboard layout [default: pt]: " KEYBOARD
-KEYBOARD=${KEYBOARD:-pt}
-
-echo -e "${GREEN}✓ Keyboard: $KEYBOARD${NC}"
-echo ""
-
-# Summary
-echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║         Installation Summary           ║${NC}"
-echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
-echo ""
-echo "  Mode: $INSTALL_MODE"
-echo "  Machine: $MACHINE_TYPE"
-echo "  Theme: $THEME"
-echo "  Keyboard: $KEYBOARD"
-echo ""
-
-read -p "Proceed with installation? [Y/n]: " confirm
-confirm=${confirm:-Y}
-
-if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-    echo -e "${YELLOW}Installation cancelled${NC}"
-    cd /
-    rm -rf "$WORK_DIR"
-    exit 0
+if [[ "${WKSTATIONZ_SUDO_READY:-0}" != 1 ]]; then
+    printf '\nRequesting administrator privileges...\n'
+    sudo -k
+    sudo -v <&3 || fail "Could not obtain sudo privileges."
 fi
 
-echo ""
+# Keep sudo authentication alive while package builds and installation run.
+(while sleep 45; do sudo -n -v 2>/dev/null || exit; done) >/dev/null 2>&1 &
+SUDO_KEEPALIVE_PID=$!
+trap 'kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true; if [[ "$CLEAN_WORK_DIR" == 1 ]]; then rm -rf -- "$SCRIPT_DIR"; fi' EXIT
 
-# Function to backup existing configs
+printf '\nMachine type:\n' >/dev/tty
+printf '%s\n' "1) Desktop (3 monitors)" "2) Laptop (built-in + external)" >/dev/tty
+prompt_choice "Choose [1-2]: " '^[1-2]$'
+if [[ "$REPLY" == 1 ]]; then
+    MACHINE_TYPE=desktop
+    MONITOR_CONFIG=monitors-desktop.lua
+else
+    MACHINE_TYPE=laptop
+    MONITOR_CONFIG=monitors-laptop.lua
+fi
+
+KEYBOARD=pt
+THEME=catppuccin
+printf '\nKeyboard layout [pt]: ' >/dev/tty
+IFS= read -r -u 3 input_keyboard || fail "Terminal input closed while waiting for keyboard layout."
+[[ -n "$input_keyboard" ]] && KEYBOARD="${input_keyboard//[[:space:]]/}"
+printf '\nSetup: %s | Machine: %s | Theme: Catppuccin Mocha | Keyboard: %s\n' "$INSTALL_MODE" "$MACHINE_TYPE" "$KEYBOARD" >/dev/tty
+printf '%s\n' "1) Continue" "2) Cancel" >/dev/tty
+prompt_choice "Choose [1-2]: " '^[1-2]$'
+[[ "$REPLY" == 1 ]] || exit 0
+
+LOG_FILE="/tmp/wkstationz-install.log"
+log() { echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"; }
+trap 'printf "%b\n" "${RED}Installation failed near line $LINENO. See $LOG_FILE.${NC}" >&2' ERR
+log "Starting v$VERSION ($INSTALL_MODE, $MACHINE_TYPE)"
+
 backup_configs() {
-    local config_name=$1
-    local config_path="$HOME/.config/$config_name"
-    
-    if [ -d "$config_path" ]; then
-        BACKUP_DIR="$config_path.backup.$(date +%Y%m%d_%H%M%S)"
-        log "Backing up existing $config_name config to $BACKUP_DIR"
-        cp -r "$config_path" "$BACKUP_DIR"
-        echo -e "${GREEN}✓ Backed up existing $config_name config${NC}"
+    local name="$1" path="$HOME/.config/$1"
+    if [[ -d "$path" ]]; then
+        local backup="$path.backup.$(date +%Y%m%d_%H%M%S)"
+        cp -a -- "$path" "$backup"
+        printf 'Backed up %s to %s\n' "$name" "$backup"
     fi
 }
 
-# Function to install a package if not already installed
-install_package() {
-    local package=$1
-    if pacman -Q "$package" &>/dev/null; then
-        log "$package already installed, skipping"
-    else
-        log "Installing $package"
-        sudo pacman -S --noconfirm --needed "$package"
-    fi
-}
-
-# Function to install AUR package if not already installed
-install_aur_package() {
-    local package=$1
-    if pacman -Q "$package" &>/dev/null; then
-        log "$package already installed from AUR, skipping"
-    else
-        log "Installing $package from AUR"
-        yay -S --noconfirm --needed "$package"
-    fi
-}
-
-# Function to install packages
 install_packages() {
-    echo -e "${YELLOW}=== Installing Packages ===${NC}"
-    echo ""
-    
-    # Update system
-    echo -e "${BLUE}Updating system...${NC}"
-    sudo pacman -Syu --noconfirm
-    
-    # Install base packages
-    echo -e "${BLUE}Installing base packages...${NC}"
-    while IFS= read -r package; do
-        [[ "$package" =~ ^#.*$ ]] && continue
-        [[ -z "$package" ]] && continue
-        install_package "$package"
+    printf '\nInstalling/updating packages...\n'
+    sudo pacman -Syu --needed --noconfirm
+    while IFS= read -r package || [[ -n "$package" ]]; do
+        [[ -z "$package" || "$package" == \#* ]] && continue
+        sudo pacman -S --needed --noconfirm "$package"
     done < "$SCRIPT_DIR/packages.list"
-    
-    # Install yay (AUR helper) if not present
-    if ! command -v yay &> /dev/null; then
-        echo -e "${BLUE}Installing yay (AUR helper)...${NC}"
-        bash "$SCRIPT_DIR/scripts/install-yay.sh"
-    fi
-    
-    # Install AUR packages
-    echo -e "${BLUE}Installing AUR packages...${NC}"
-    while IFS= read -r package; do
-        [[ "$package" =~ ^#.*$ ]] && continue
-        [[ -z "$package" ]] && continue
-        install_aur_package "$package"
+    if ! command -v yay >/dev/null 2>&1; then bash "$SCRIPT_DIR/scripts/install-yay.sh"; fi
+    while IFS= read -r package || [[ -n "$package" ]]; do
+        [[ -z "$package" || "$package" == \#* ]] && continue
+        yay -S --needed --noconfirm "$package"
     done < "$SCRIPT_DIR/aur-packages.list"
-    
-    log "Packages installed"
 }
 
-# Function to install configs
 install_configs() {
-    echo -e "${YELLOW}=== Installing Configurations ===${NC}"
-    echo ""
-    
-    mkdir -p ~/.config/{hypr,quickshell,rofi,kitty,swaync,gtk-3.0,wkstationz}
-    
-    echo -e "${BLUE}Installing Hyprland config...${NC}"
-    cp -r "$SCRIPT_DIR/configs/hyprland/"* ~/.config/hypr/
-    cp "$SCRIPT_DIR/configs/hyprland/$MONITOR_CONFIG" ~/.config/hypr/monitors.lua
-    log "Hyprland config installed"
-    
-    echo -e "${BLUE}Installing Quickshell config...${NC}"
-    cp -r "$SCRIPT_DIR/configs/quickshell/"* ~/.config/quickshell/
-    log "Quickshell config installed"
-    
-    echo -e "${BLUE}Installing Rofi config...${NC}"
-    cp -r "$SCRIPT_DIR/configs/rofi/"* ~/.config/rofi/
-    log "Rofi config installed"
-    
-    echo -e "${BLUE}Installing Kitty config...${NC}"
-    cp -r "$SCRIPT_DIR/configs/kitty/"* ~/.config/kitty/
-    log "Kitty config installed"
-    
-    echo -e "${BLUE}Installing swaync config...${NC}"
-    cp -r "$SCRIPT_DIR/configs/swaync/"* ~/.config/swaync/
-    log "swaync config installed"
-    
-    echo -e "${BLUE}Installing GTK config...${NC}"
-    cp -r "$SCRIPT_DIR/configs/gtk-3.0/"* ~/.config/gtk-3.0/
-    log "GTK config installed"
-    
-    echo -e "${BLUE}Installing helper scripts...${NC}"
-    cp -r "$SCRIPT_DIR/scripts/"* ~/.config/wkstationz/
-    chmod +x ~/.config/wkstationz/*.sh
-    log "Helper scripts installed"
-    
-    echo -e "${BLUE}Installing themes...${NC}"
-    cp -r "$SCRIPT_DIR/themes" ~/.config/wkstationz/
-    log "Themes installed"
+    mkdir -p "$HOME/.config"/{hypr,quickshell,rofi,kitty,swaync,gtk-3.0,wkstationz}
+    cp -a "$SCRIPT_DIR/configs/hyprland/." "$HOME/.config/hypr/"
+    cp "$SCRIPT_DIR/configs/hyprland/$MONITOR_CONFIG" "$HOME/.config/hypr/monitors.lua"
+    cp -a "$SCRIPT_DIR/configs/quickshell/." "$HOME/.config/quickshell/"
+    cp -a "$SCRIPT_DIR/configs/rofi/." "$HOME/.config/rofi/"
+    cp -a "$SCRIPT_DIR/configs/kitty/." "$HOME/.config/kitty/"
+    cp -a "$SCRIPT_DIR/configs/swaync/." "$HOME/.config/swaync/"
+    cp -a "$SCRIPT_DIR/configs/gtk-3.0/." "$HOME/.config/gtk-3.0/"
+    cp -a "$SCRIPT_DIR/scripts" "$HOME/.config/wkstationz/"
+    cp -a "$SCRIPT_DIR/themes" "$HOME/.config/wkstationz/"
+    cp "$SCRIPT_DIR/VERSION" "$INSTALLED_VERSION_FILE"
+    chmod +x "$HOME/.config/rofi/launcher/launcher.sh" "$HOME/.config/wkstationz/scripts/"*.sh
+    sed -i "s/kb_layout = .*/kb_layout = $KEYBOARD/" "$HOME/.config/hypr/hyprland.lua"
 }
 
-# Function to apply theme
-apply_theme() {
-    echo ""
-    echo -e "${YELLOW}=== Applying Theme ===${NC}"
-    echo ""
-    bash "$SCRIPT_DIR/scripts/apply-theme.sh" "$THEME"
-    log "Theme applied: $THEME"
-}
+# Preserve local edits in both fresh and reapply/update modes.
+for component in hypr quickshell rofi kitty swaync gtk-3.0; do
+    backup_configs "$component"
+done
 
-# Function to configure keyboard layout
-configure_keyboard() {
-    echo -e "${BLUE}Setting keyboard layout to: $KEYBOARD${NC}"
-    sed -i "s/kb_layout = .*/kb_layout = $KEYBOARD/" ~/.config/hypr/hyprland.lua
-    log "Keyboard layout set to: $KEYBOARD"
-}
+install_packages
+install_configs
+bash "$SCRIPT_DIR/scripts/apply-theme.sh" "$THEME"
+bash "$SCRIPT_DIR/scripts/enable-services.sh"
 
-# Function to enable services
-enable_services() {
-    echo ""
-    echo -e "${YELLOW}=== Enabling Services ===${NC}"
-    echo ""
-    bash "$SCRIPT_DIR/scripts/enable-services.sh"
-    log "Services enabled"
-}
-
-# Function to save version
-save_version() {
-    mkdir -p "$HOME/.config/wkstationz"
-    echo "$VERSION" > "$INSTALLED_VERSION_FILE"
-    log "Saved version $VERSION to $INSTALLED_VERSION_FILE"
-}
-
-# Execute installation
-if [ "$INSTALL_MODE" = "install" ]; then
-    echo -e "${YELLOW}=== Fresh Installation ===${NC}"
-    echo ""
-    
-    # Backup existing configs
-    echo -e "${YELLOW}=== Backing Up Existing Configs ===${NC}"
-    echo ""
-    backup_configs "hypr"
-    backup_configs "quickshell"
-    backup_configs "rofi"
-    backup_configs "kitty"
-    backup_configs "swaync"
-    backup_configs "gtk-3.0"
-    echo ""
-    
-    install_packages
-    install_configs
-    apply_theme
-    configure_keyboard
-    enable_services
-    save_version
-    
-elif [ "$INSTALL_MODE" = "update" ]; then
-    echo -e "${YELLOW}=== Updating Installation ===${NC}"
-    echo ""
-    
-    # Backup existing configs
-    echo -e "${YELLOW}=== Backing Up Existing Configs ===${NC}"
-    echo ""
-    backup_configs "hypr"
-    backup_configs "quickshell"
-    backup_configs "rofi"
-    backup_configs "kitty"
-    backup_configs "swaync"
-    backup_configs "gtk-3.0"
-    echo ""
-    
-    install_packages
-    install_configs
-    apply_theme
-    configure_keyboard
-    enable_services
-    save_version
-fi
-
-chmod +x ~/.config/rofi/launcher/launcher.sh 2>/dev/null || true
-
-# Completion message
-echo ""
-echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║        Installation Complete!          ║${NC}"
-echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
-echo ""
-echo -e "${GREEN}What's installed:${NC}"
-echo "  • Hyprland (Wayland compositor)"
-echo "  • Quickshell (status bar)"
-echo "  • Rofi (app launcher)"
-echo "  • Kitty (terminal)"
-echo "  • Thunar (file manager)"
-echo "  • Brave (browser)"
-echo "  • PulseAudio (sound)"
-echo "  • Theme: $THEME"
-echo "  • Version: $VERSION"
-echo ""
-echo -e "${YELLOW}Next steps:${NC}"
-echo "  1. Reboot your system"
-echo "  2. Select 'Hyprland' at the SDDM login screen"
-echo "  3. Log in with your password"
-echo ""
-echo -e "${BLUE}Keybinds:${NC}"
-echo "  Super+T      Terminal"
-echo "  Super+B      Browser"
-echo "  Super+E      File manager"
-echo "  Super+Space  App launcher"
-echo "  Super+L      Lock screen"
-echo "  Super+F1     Show all keybinds"
-echo ""
-echo -e "${GREEN}Log file saved to: $LOG_FILE${NC}"
-echo -e "${GREEN}Enjoy your new setup!${NC}"
-
+printf '\n%b\n' "${GREEN}wkstationz v$VERSION installed successfully.${NC}"
+printf '%s\n' "Machine: $MACHINE_TYPE" "Theme: Catppuccin Mocha" "Keyboard: $KEYBOARD" "Log: $LOG_FILE"
 log "Installation completed successfully"
-
-# Cleanup
-cd /
-rm -rf "$WORK_DIR"
-echo ""
-echo -e "${GREEN}✓ Work directory cleaned up${NC}"
