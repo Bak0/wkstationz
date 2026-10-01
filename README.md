@@ -6,13 +6,13 @@ Automated Arch Linux desktop setup with Hyprland, Quickshell, and essential appl
 
 ### Option 1: Direct Curl (Recommended for fresh installs)
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bak0/arch-setup/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Bak0/wkstationz/main/install.sh | bash
 ```
 
 ### Option 2: Git Clone
 ```bash
-git clone https://github.com/bak0/arch-setup.git
-cd arch-setup
+git clone https://github.com/Bak0/wkstationz.git
+cd wkstationz
 ./install.sh
 ```
 
@@ -95,10 +95,10 @@ All configurations are stored in `~/.config/`:
 After installation, you can switch themes using the settings dropdown in Quickshell, or manually:
 
 ```bash
-~/.config/arch-setup/scripts/apply-theme.sh catppuccin
-~/.config/arch-setup/scripts/apply-theme.sh gruvbox
-~/.config/arch-setup/scripts/apply-theme.sh nord
-~/.config/arch-setup/scripts/apply-theme.sh tokyo-night
+~/.config/wkstationz/scripts/apply-theme.sh catppuccin
+~/.config/wkstationz/scripts/apply-theme.sh gruvbox
+~/.config/wkstationz/scripts/apply-theme.sh nord
+~/.config/wkstationz/scripts/apply-theme.sh tokyo-night
 ```
 
 ### Monitor Configuration
@@ -113,7 +113,7 @@ hyprctl monitors
 ## Project Structure
 
 ```
-arch-setup/
+wkstationz/
 ├── install.sh              # Main installation script
 ├── packages.list           # Pacman packages
 ├── aur-packages.list       # AUR packages
@@ -162,7 +162,7 @@ systemctl --user restart pulseaudio
 ### Theme not applying
 Run the theme script manually:
 ```bash
-~/.config/arch-setup/scripts/apply-theme.sh <theme-name>
+~/.config/wkstationz/scripts/apply-theme.sh <theme-name>
 ```
 
 ## Customization
