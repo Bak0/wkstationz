@@ -134,7 +134,7 @@ if [ -f "$INSTALLED_VERSION_FILE" ]; then
         echo "1) Update configs (force-update)"
         echo "2) Fresh installation (force-install)"
         echo "3) Exit"
-        read -p "Choose option [1-3]: " choice
+        read -p "Choose option [1-3]: " choice < /dev/tty
         
         case $choice in
             1) INSTALL_MODE="update" ;;
@@ -161,7 +161,7 @@ if [ -f "$INSTALLED_VERSION_FILE" ]; then
             echo ""
             echo "1) Downgrade (force-install)"
             echo "2) Exit"
-            read -p "Choose option [1-2]: " choice
+            read -p "Choose option [1-2]: " choice < /dev/tty
             
             case $choice in
                 1) INSTALL_MODE="install" ;;
@@ -192,7 +192,7 @@ echo ""
 echo -e "${YELLOW}=== Machine Type ===${NC}"
 echo "1) Desktop (3 monitors)"
 echo "2) Laptop (built-in + external)"
-read -p "Choose option [1-2]: " machine_choice
+read -p "Choose option [1-2]: " machine_choice < /dev/tty
 
 case $machine_choice in
     1)
@@ -220,7 +220,7 @@ echo "1) Catppuccin Mocha (purple/blue) [DEFAULT]"
 echo "2) Gruvbox Dark (warm retro)"
 echo "3) Nord (cool blue-gray)"
 echo "4) Tokyo Night (modern dark blue)"
-read -p "Choose option [1-4, or press Enter for default]: " theme_choice
+read -p "Choose option [1-4, or press Enter for default]: " theme_choice < /dev/tty
 
 case $theme_choice in
     1|"") THEME="catppuccin" ;;
@@ -238,7 +238,7 @@ echo ""
 
 # Interactive: Keyboard layout
 echo -e "${YELLOW}=== Keyboard Layout ===${NC}"
-read -p "Keyboard layout [default: pt]: " KEYBOARD
+read -p "Keyboard layout [default: pt]: " KEYBOARD < /dev/tty
 KEYBOARD=${KEYBOARD:-pt}
 
 echo -e "${GREEN}✓ Keyboard: $KEYBOARD${NC}"
@@ -255,7 +255,7 @@ echo "  Theme: $THEME"
 echo "  Keyboard: $KEYBOARD"
 echo ""
 
-read -p "Proceed with installation? [Y/n]: " confirm
+read -p "Proceed with installation? [Y/n]: " confirm < /dev/tty
 confirm=${confirm:-Y}
 
 if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
