@@ -1,0 +1,12 @@
+# Arch Setup - AUR Packages
+# One package per line, comments start with #
+# These require yay to be installed first
+
+# Browser
+brave-bin
+
+# Notes
+obsidian
+
+# Password Manager
+keepass

@@ -1,0 +1,49 @@
+/* Catppuccin Mocha GTK theme overrides */
+
+@define-color bg_color #1e1e2e;
+@define-color fg_color #cdd6f4;
+@define-color accent_color #cba6f7;
+@define-color surface_color #313244;
+@define-color border_color #45475a;
+
+window {
+    background-color: @bg_color;
+    color: @fg_color;
+}
+
+headerbar {
+    background-color: @surface_color;
+    color: @fg_color;
+    border-bottom: 1px solid @border_color;
+}
+
+button {
+    background-color: @surface_color;
+    color: @fg_color;
+    border: 1px solid @border_color;
+    border-radius: 6px;
+}
+
+button:hover {
+    background-color: @accent_color;
+    color: @bg_color;
+}
+
+entry {
+    background-color: @surface_color;
+    color: @fg_color;
+    border: 1px solid @border_color;
+    border-radius: 6px;
+    padding: 6px;
+}
+
+menu, .menu {
+    background-color: @surface_color;
+    color: @fg_color;
+    border: 1px solid @border_color;
+}
+
+menuitem:hover, .menuitem:hover {
+    background-color: @accent_color;
+    color: @bg_color;
+}

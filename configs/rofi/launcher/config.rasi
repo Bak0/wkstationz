@@ -1,0 +1,13 @@
+configuration {
+    modi: "drun,run,filebrowser,window";
+    show-icons: true;
+    icon-theme: "Papirus-Dark";
+    terminal: "kitty";
+    drun-display-format: "{icon} {name}";
+    display-drun: " Apps";
+    display-run: " Run";
+    display-filebrowser: " Files";
+    display-window: " Windows";
+}
+
+@theme "~/.config/rofi/launcher/theme.rasi"

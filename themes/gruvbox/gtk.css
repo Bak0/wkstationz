@@ -1,0 +1,49 @@
+/* Gruvbox Dark GTK theme overrides */
+
+@define-color bg_color #282828;
+@define-color fg_color #ebdbb2;
+@define-color accent_color #fe8019;
+@define-color surface_color #3c3836;
+@define-color border_color #504945;
+
+window {
+    background-color: @bg_color;
+    color: @fg_color;
+}
+
+headerbar {
+    background-color: @surface_color;
+    color: @fg_color;
+    border-bottom: 1px solid @border_color;
+}
+
+button {
+    background-color: @surface_color;
+    color: @fg_color;
+    border: 1px solid @border_color;
+    border-radius: 6px;
+}
+
+button:hover {
+    background-color: @accent_color;
+    color: @bg_color;
+}
+
+entry {
+    background-color: @surface_color;
+    color: @fg_color;
+    border: 1px solid @border_color;
+    border-radius: 6px;
+    padding: 6px;
+}
+
+menu, .menu {
+    background-color: @surface_color;
+    color: @fg_color;
+    border: 1px solid @border_color;
+}
+
+menuitem:hover, .menuitem:hover {
+    background-color: @accent_color;
+    color: @bg_color;
+}
