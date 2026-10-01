@@ -1,19 +1,7 @@
 #!/bin/bash
 
-# Main installer script - version-based, no interactive prompts
-# Usage: ./install.sh [OPTIONS]
-#
-# Options:
-#   --desktop          Desktop setup (3 monitors)
-#   --laptop           Laptop setup (built-in + external)
-#   --catppuccin       Use Catppuccin theme
-#   --gruvbox          Use Gruvbox theme
-#   --nord             Use Nord theme
-#   --tokyo-night      Use Tokyo Night theme
-#   --keyboard=XX      Keyboard layout (default: pt)
-#   --force-install    Force fresh installation
-#   --force-update     Force update installation
-#   --help             Show this help
+# Main installer script - version-based with interactive prompts
+# Usage: ./install.sh
 
 set -e
 
@@ -34,93 +22,27 @@ echo -e "${BLUE}║   wkstationz v$VERSION - Installer     ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
 echo ""
 
-# Parse command-line arguments
-MACHINE_TYPE=""
-THEME=""
-KEYBOARD="pt"
-FORCE_MODE=""
-
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --desktop)
-            MACHINE_TYPE="desktop"
-            shift
-            ;;
-        --laptop)
-            MACHINE_TYPE="laptop"
-            shift
-            ;;
-        --catppuccin)
-            THEME="catppuccin"
-            shift
-            ;;
-        --gruvbox)
-            THEME="gruvbox"
-            shift
-            ;;
-        --nord)
-            THEME="nord"
-            shift
-            ;;
-        --tokyo-night)
-            THEME="tokyo-night"
-            shift
-            ;;
-        --keyboard=*)
-            KEYBOARD="${1#*=}"
-            shift
-            ;;
-        --force-install)
-            FORCE_MODE="install"
-            shift
-            ;;
-        --force-update)
-            FORCE_MODE="update"
-            shift
-            ;;
-        --help)
-            echo "Usage: ./install.sh [OPTIONS]"
-            echo ""
-            echo "Options:"
-            echo "  --desktop          Desktop setup (3 monitors)"
-            echo "  --laptop           Laptop setup (built-in + external)"
-            echo "  --catppuccin       Use Catppuccin theme"
-            echo "  --gruvbox          Use Gruvbox theme"
-            echo "  --nord             Use Nord theme"
-            echo "  --tokyo-night      Use Tokyo Night theme"
-            echo "  --keyboard=XX      Keyboard layout (default: pt)"
-            echo "  --force-install    Force fresh installation"
-            echo "  --force-update     Force update installation"
-            echo "  --help             Show this help"
-            echo ""
-            echo "Examples:"
-            echo "  ./install.sh --desktop --catppuccin --keyboard=us"
-            echo "  ./install.sh --laptop --nord"
-            exit 0
-            ;;
-        *)
-            echo -e "${RED}Unknown option: $1${NC}"
-            echo "Use --help for usage information"
-            exit 1
-            ;;
-    esac
-done
-
-# Validate required arguments
-if [ -z "$MACHINE_TYPE" ]; then
-    echo -e "${RED}Error: Machine type required (--desktop or --laptop)${NC}"
-    echo "Use --help for usage information"
-    exit 1
-fi
-
-if [ -z "$THEME" ]; then
-    echo -e "${RED}Error: Theme required (--catppuccin, --gruvbox, --nord, or --tokyo-night)${NC}"
-    echo "Use --help for usage information"
-    exit 1
-fi
-
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Debug output
+echo "DEBUG: SCRIPT_DIR = $SCRIPT_DIR"
+echo "DEBUG: Current directory = $(pwd)"
+echo "DEBUG: BASH_SOURCE[0] = ${BASH_SOURCE[0]}"
+echo ""
+
+# Validate required files exist
+if [ ! -f "$SCRIPT_DIR/packages.list" ]; then
+    echo -e "${RED}Error: packages.list not found in $SCRIPT_DIR${NC}"
+    echo "Contents of $SCRIPT_DIR:"
+    ls -la "$SCRIPT_DIR"
+    exit 1
+fi
+
+if [ ! -f "$SCRIPT_DIR/aur-packages.list" ]; then
+    echo -e "${RED}Error: aur-packages.list not found in $SCRIPT_DIR${NC}"
+    exit 1
+fi
 
 # Logging
 LOG_FILE="/tmp/wkstationz-install.log"
@@ -155,17 +77,24 @@ echo ""
 # Determine install mode based on version
 INSTALL_MODE=""
 
-if [ -n "$FORCE_MODE" ]; then
-    INSTALL_MODE="$FORCE_MODE"
-    echo -e "${YELLOW}Force mode: $INSTALL_MODE${NC}"
-elif [ -f "$INSTALLED_VERSION_FILE" ]; then
+if [ -f "$INSTALLED_VERSION_FILE" ]; then
     INSTALLED_VERSION=$(cat "$INSTALLED_VERSION_FILE")
     echo -e "${BLUE}Detected installed version: $INSTALLED_VERSION${NC}"
     
     if [ "$INSTALLED_VERSION" = "$VERSION" ]; then
-        echo -e "${YELLOW}Same version detected. Use --force-update to update configs.${NC}"
-        echo -e "${YELLOW}Use --force-install for fresh installation.${NC}"
-        exit 0
+        echo -e "${YELLOW}Same version detected.${NC}"
+        echo ""
+        echo "1) Update configs (force-update)"
+        echo "2) Fresh installation (force-install)"
+        echo "3) Exit"
+        read -p "Choose option [1-3]: " choice < /dev/tty
+        
+        case $choice in
+            1) INSTALL_MODE="update" ;;
+            2) INSTALL_MODE="install" ;;
+            3) exit 0 ;;
+            *) echo -e "${RED}Invalid choice${NC}"; exit 1 ;;
+        esac
     else
         # Compare versions (simple string comparison for now)
         if [ "$VERSION" \> "$INSTALLED_VERSION" ]; then
@@ -173,8 +102,16 @@ elif [ -f "$INSTALLED_VERSION_FILE" ]; then
             INSTALL_MODE="update"
         else
             echo -e "${YELLOW}Installed version is newer: $INSTALLED_VERSION > $VERSION${NC}"
-            echo -e "${YELLOW}Use --force-install to downgrade.${NC}"
-            exit 0
+            echo ""
+            echo "1) Downgrade (force-install)"
+            echo "2) Exit"
+            read -p "Choose option [1-2]: " choice < /dev/tty
+            
+            case $choice in
+                1) INSTALL_MODE="install" ;;
+                2) exit 0 ;;
+                *) echo -e "${RED}Invalid choice${NC}"; exit 1 ;;
+            esac
         fi
     fi
 else
@@ -184,17 +121,82 @@ fi
 
 echo ""
 echo -e "${BLUE}Installation mode: $INSTALL_MODE${NC}"
-echo -e "${BLUE}Machine type: $MACHINE_TYPE${NC}"
-echo -e "${BLUE}Theme: $THEME${NC}"
-echo -e "${BLUE}Keyboard: $KEYBOARD${NC}"
 echo ""
 
-# Set monitor config based on machine type
-if [ "$MACHINE_TYPE" = "desktop" ]; then
-    MONITOR_CONFIG="monitors-desktop.lua"
-else
-    MONITOR_CONFIG="monitors-laptop.lua"
+# Interactive: Machine type
+echo -e "${YELLOW}=== Machine Type ===${NC}"
+echo "1) Desktop (3 monitors)"
+echo "2) Laptop (built-in + external)"
+read -p "Choose option [1-2]: " machine_choice < /dev/tty
+
+case $machine_choice in
+    1)
+        MACHINE_TYPE="desktop"
+        MONITOR_CONFIG="monitors-desktop.lua"
+        ;;
+    2)
+        MACHINE_TYPE="laptop"
+        MONITOR_CONFIG="monitors-laptop.lua"
+        ;;
+    *)
+        echo -e "${RED}Invalid choice${NC}"
+        exit 1
+        ;;
+esac
+
+echo -e "${GREEN}✓ Machine type: $MACHINE_TYPE${NC}"
+echo ""
+
+# Interactive: Theme (default to catppuccin)
+echo -e "${YELLOW}=== Color Theme ===${NC}"
+echo "1) Catppuccin Mocha (purple/blue) [DEFAULT]"
+echo "2) Gruvbox Dark (warm retro)"
+echo "3) Nord (cool blue-gray)"
+echo "4) Tokyo Night (modern dark blue)"
+read -p "Choose option [1-4, or press Enter for default]: " theme_choice < /dev/tty
+
+case $theme_choice in
+    1|"") THEME="catppuccin" ;;
+    2) THEME="gruvbox" ;;
+    3) THEME="nord" ;;
+    4) THEME="tokyo-night" ;;
+    *)
+        echo -e "${RED}Invalid choice, using default${NC}"
+        THEME="catppuccin"
+        ;;
+esac
+
+echo -e "${GREEN}✓ Theme: $THEME${NC}"
+echo ""
+
+# Interactive: Keyboard layout
+echo -e "${YELLOW}=== Keyboard Layout ===${NC}"
+read -p "Keyboard layout [default: pt]: " KEYBOARD < /dev/tty
+KEYBOARD=${KEYBOARD:-pt}
+
+echo -e "${GREEN}✓ Keyboard: $KEYBOARD${NC}"
+echo ""
+
+# Summary
+echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
+echo -e "${BLUE}║         Installation Summary           ║${NC}"
+echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
+echo ""
+echo "  Mode: $INSTALL_MODE"
+echo "  Machine: $MACHINE_TYPE"
+echo "  Theme: $THEME"
+echo "  Keyboard: $KEYBOARD"
+echo ""
+
+read -p "Proceed with installation? [Y/n]: " confirm < /dev/tty
+confirm=${confirm:-Y}
+
+if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+    echo -e "${YELLOW}Installation cancelled${NC}"
+    exit 0
 fi
+
+echo ""
 
 # Function to backup existing configs
 backup_configs() {
