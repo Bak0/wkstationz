@@ -3,6 +3,7 @@
 # Arch Setup - Automated Arch Linux Desktop Installer
 # Repository: https://github.com/Bak0/wkstationz
 # Usage: curl -fsSL https://raw.githubusercontent.com/Bak0/wkstationz/main/install.sh | bash
+# Or: git clone https://github.com/Bak0/wkstationz.git && cd wkstationz && ./install.sh
 
 set -e
 
@@ -22,23 +23,12 @@ log() {
 # Error handling
 trap 'echo -e "${RED}Error on line $LINENO. Check $LOG_FILE for details.${NC}"' ERR
 
-echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║     Arch Setup - Desktop Installer     ║${NC}"
-echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
-echo ""
-
-log "Starting installation"
-
-# Check if running as root
-if [ "$EUID" -eq 0 ]; then
-    echo -e "${RED}Error: Do not run this script as root${NC}"
-    echo "Please run as a normal user"
-    exit 1
-fi
-
-# Detect if script is being piped and download if necessary
-if [ ! -t 0 ] || [ "${BASH_SOURCE[0]}" = "/dev/stdin" ] || [ "${BASH_SOURCE[0]}" = "/proc/self/fd/0" ]; then
-    echo -e "${BLUE}Detected piped installation, downloading repository...${NC}"
+# Check if running from downloaded location, if not, download and re-execute
+if [ -z "$WKSTATIONZ_DOWNLOADED" ]; then
+    echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║     Arch Setup - Desktop Installer     ║${NC}"
+    echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
+    echo ""
     
     # Check if git is available
     if ! command -v git &> /dev/null; then
@@ -46,15 +36,32 @@ if [ ! -t 0 ] || [ "${BASH_SOURCE[0]}" = "/dev/stdin" ] || [ "${BASH_SOURCE[0]}"
         sudo pacman -S --noconfirm git
     fi
     
+    # Download repository
     TEMP_DIR=$(mktemp -d)
-    cd "$TEMP_DIR"
-    git clone https://github.com/Bak0/wkstationz.git .
-    SCRIPT_DIR="$TEMP_DIR"
-    echo -e "${GREEN}Repository downloaded to $TEMP_DIR${NC}"
-    echo ""
-else
-    # Get script directory
-    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+    echo -e "${BLUE}Downloading repository to $TEMP_DIR...${NC}"
+    git clone https://github.com/Bak0/wkstationz.git "$TEMP_DIR"
+    
+    # Re-execute from downloaded location
+    export WKSTATIONZ_DOWNLOADED=1
+    export WKSTATIONZ_DIR="$TEMP_DIR"
+    exec "$TEMP_DIR/install.sh"
+fi
+
+# Now we're running from the downloaded/cloned location
+SCRIPT_DIR="${WKSTATIONZ_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+
+echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
+echo -e "${BLUE}║     Arch Setup - Desktop Installer     ║${NC}"
+echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
+echo ""
+
+log "Starting installation from $SCRIPT_DIR"
+
+# Check if running as root
+if [ "$EUID" -eq 0 ]; then
+    echo -e "${RED}Error: Do not run this script as root${NC}"
+    echo "Please run as a normal user"
+    exit 1
 fi
 
 # Function to backup existing configs
@@ -92,59 +99,6 @@ install_aur_package() {
     fi
 }
 
-# Function to get user input with validation
-get_input() {
-    local prompt=$1
-    local default=$2
-    local input
-    
-    while true; do
-        echo -n -e "${BLUE}$prompt${NC}"
-        if [ -n "$default" ]; then
-            echo -n -e " [${YELLOW}$default${NC}]: "
-        else
-            echo -n ": "
-        fi
-        
-        # Read from terminal
-        read input < /dev/tty
-        
-        # Trim whitespace
-        input=$(echo "$input" | tr -d '[:space:]')
-        
-        # Use default if empty
-        if [ -z "$input" ] && [ -n "$default" ]; then
-            input="$default"
-        fi
-        
-        # Return input
-        if [ -n "$input" ]; then
-            echo "$input"
-            return 0
-        fi
-    done
-}
-
-# Function to get menu choice
-get_menu_choice() {
-    local prompt=$1
-    local min=$2
-    local max=$3
-    local choice
-    
-    while true; do
-        choice=$(get_input "$prompt" "")
-        
-        # Validate it's a number in range
-        if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge "$min" ] && [ "$choice" -le "$max" ]; then
-            echo "$choice"
-            return 0
-        else
-            echo -e "${RED}Invalid choice. Please enter a number between $min and $max${NC}"
-        fi
-    done
-}
-
 # Function to detect existing installation
 detect_existing_install() {
     if [ -d "$HOME/.config/hypr" ] && [ -d "$HOME/.config/quickshell" ]; then
@@ -157,7 +111,6 @@ detect_existing_install() {
 # Function to get current theme from existing config
 get_current_theme() {
     if [ -f "$HOME/.config/quickshell/theme.conf" ]; then
-        # Try to detect theme from colors
         local bg_color=$(grep "background = " "$HOME/.config/quickshell/theme.conf" | cut -d'=' -f2 | tr -d ' ')
         case "$bg_color" in
             "#1e1e2e") echo "catppuccin" ;;
@@ -183,10 +136,8 @@ install_packages() {
     # Install base packages
     echo -e "${BLUE}Installing base packages...${NC}"
     while IFS= read -r package; do
-        # Skip comments and empty lines
         [[ "$package" =~ ^#.*$ ]] && continue
         [[ -z "$package" ]] && continue
-        
         install_package "$package"
     done < "$SCRIPT_DIR/packages.list"
     
@@ -201,7 +152,6 @@ install_packages() {
     while IFS= read -r package; do
         [[ "$package" =~ ^#.*$ ]] && continue
         [[ -z "$package" ]] && continue
-        
         install_aur_package "$package"
     done < "$SCRIPT_DIR/aur-packages.list"
     
@@ -213,37 +163,29 @@ install_configs() {
     echo -e "${YELLOW}=== Installing Configurations ===${NC}"
     echo ""
     
-    # Create config directories
-    echo -e "${BLUE}Creating config directories...${NC}"
     mkdir -p ~/.config/{hypr,quickshell,rofi,kitty,swaync,gtk-3.0}
     
-    # Copy Hyprland config
     echo -e "${BLUE}Installing Hyprland config...${NC}"
     cp -r "$SCRIPT_DIR/configs/hyprland/"* ~/.config/hypr/
     cp "$SCRIPT_DIR/configs/hyprland/$MONITOR_CONFIG" ~/.config/hypr/monitors.lua
     log "Hyprland config installed"
     
-    # Copy Quickshell config
     echo -e "${BLUE}Installing Quickshell config...${NC}"
     cp -r "$SCRIPT_DIR/configs/quickshell/"* ~/.config/quickshell/
     log "Quickshell config installed"
     
-    # Copy Rofi config
     echo -e "${BLUE}Installing Rofi config...${NC}"
     cp -r "$SCRIPT_DIR/configs/rofi/"* ~/.config/rofi/
     log "Rofi config installed"
     
-    # Copy Kitty config
     echo -e "${BLUE}Installing Kitty config...${NC}"
     cp -r "$SCRIPT_DIR/configs/kitty/"* ~/.config/kitty/
     log "Kitty config installed"
     
-    # Copy swaync config
     echo -e "${BLUE}Installing swaync config...${NC}"
     cp -r "$SCRIPT_DIR/configs/swaync/"* ~/.config/swaync/
     log "swaync config installed"
     
-    # Copy GTK config
     echo -e "${BLUE}Installing GTK config...${NC}"
     cp -r "$SCRIPT_DIR/configs/gtk-3.0/"* ~/.config/gtk-3.0/
     log "GTK config installed"
@@ -278,7 +220,6 @@ enable_services() {
 fresh_install() {
     log "Starting fresh installation"
     
-    # Interactive prompts
     echo -e "${YELLOW}=== Configuration ===${NC}"
     echo ""
     
@@ -286,11 +227,12 @@ fresh_install() {
     echo -e "${BLUE}Select machine type:${NC}"
     echo "1) Desktop (3 monitors)"
     echo "2) Laptop (built-in + external)"
-    MACHINE_TYPE=$(get_menu_choice "Enter choice" 1 2)
+    read -p "Enter choice [1-2]: " MACHINE_TYPE
     
     case $MACHINE_TYPE in
         1) MONITOR_CONFIG="monitors-desktop.lua" ;;
         2) MONITOR_CONFIG="monitors-laptop.lua" ;;
+        *) echo -e "${RED}Invalid choice${NC}"; exit 1 ;;
     esac
     
     # Color theme
@@ -300,18 +242,20 @@ fresh_install() {
     echo "2) Gruvbox Dark (warm retro)"
     echo "3) Nord (cool blue-gray)"
     echo "4) Tokyo Night (modern dark blue)"
-    THEME_CHOICE=$(get_menu_choice "Enter choice" 1 4)
+    read -p "Enter choice [1-4]: " THEME_CHOICE
     
     case $THEME_CHOICE in
         1) THEME="catppuccin" ;;
         2) THEME="gruvbox" ;;
         3) THEME="nord" ;;
         4) THEME="tokyo-night" ;;
+        *) echo -e "${RED}Invalid choice${NC}"; exit 1 ;;
     esac
     
     # Keyboard layout
     echo ""
-    KEYBOARD_LAYOUT=$(get_input "Keyboard layout" "pt")
+    read -p "Keyboard layout [default: pt]: " KEYBOARD_LAYOUT
+    KEYBOARD_LAYOUT=${KEYBOARD_LAYOUT:-pt}
     
     echo ""
     echo -e "${GREEN}Configuration saved:${NC}"
@@ -333,22 +277,12 @@ fresh_install() {
     backup_configs "gtk-3.0"
     echo ""
     
-    # Install packages
     install_packages
-    
-    # Install configs
     install_configs
-    
-    # Apply theme
     apply_theme
-    
-    # Configure keyboard
     configure_keyboard
-    
-    # Enable services
     enable_services
     
-    # Make scripts executable
     chmod +x ~/.config/rofi/launcher/launcher.sh 2>/dev/null || true
 }
 
@@ -356,12 +290,10 @@ fresh_install() {
 update_install() {
     log "Starting update installation"
     
-    # Detect current settings
     CURRENT_THEME=$(get_current_theme)
     echo -e "${BLUE}Detected current theme: $CURRENT_THEME${NC}"
     echo ""
     
-    # Ask what to update
     echo -e "${YELLOW}=== Update Options ===${NC}"
     echo ""
     echo "What would you like to update?"
@@ -370,11 +302,10 @@ update_install() {
     echo "3) Change theme"
     echo "4) Change keyboard layout"
     echo "5) All of the above"
-    UPDATE_CHOICE=$(get_menu_choice "Enter choice" 1 5)
+    read -p "Enter choice [1-5]: " UPDATE_CHOICE
     
     case $UPDATE_CHOICE in
         1)
-            # Backup and update configs only
             echo -e "${YELLOW}=== Backing Up Existing Configs ===${NC}"
             echo ""
             backup_configs "hypr"
@@ -385,18 +316,16 @@ update_install() {
             backup_configs "gtk-3.0"
             echo ""
             
-            # Ask for machine type
             echo -e "${BLUE}Select machine type:${NC}"
             echo "1) Desktop (3 monitors)"
             echo "2) Laptop (built-in + external)"
-            MACHINE_TYPE=$(get_menu_choice "Enter choice" 1 2)
+            read -p "Enter choice [1-2]: " MACHINE_TYPE
             
             case $MACHINE_TYPE in
                 1) MONITOR_CONFIG="monitors-desktop.lua" ;;
                 2) MONITOR_CONFIG="monitors-laptop.lua" ;;
             esac
             
-            # Use current theme
             THEME="$CURRENT_THEME"
             if [ "$THEME" = "unknown" ]; then
                 echo ""
@@ -405,7 +334,7 @@ update_install() {
                 echo "2) Gruvbox Dark (warm retro)"
                 echo "3) Nord (cool blue-gray)"
                 echo "4) Tokyo Night (modern dark blue)"
-                THEME_CHOICE=$(get_menu_choice "Enter choice" 1 4)
+                read -p "Enter choice [1-4]: " THEME_CHOICE
                 
                 case $THEME_CHOICE in
                     1) THEME="catppuccin" ;;
@@ -415,10 +344,10 @@ update_install() {
                 esac
             fi
             
-            # Get current keyboard layout
             KEYBOARD_LAYOUT=$(grep "kb_layout = " ~/.config/hypr/hyprland.lua | cut -d'"' -f2)
             if [ -z "$KEYBOARD_LAYOUT" ]; then
-                KEYBOARD_LAYOUT=$(get_input "Keyboard layout" "pt")
+                read -p "Keyboard layout [default: pt]: " KEYBOARD_LAYOUT
+                KEYBOARD_LAYOUT=${KEYBOARD_LAYOUT:-pt}
             fi
             
             install_configs
@@ -427,7 +356,6 @@ update_install() {
             ;;
             
         2)
-            # Backup and update configs and packages
             echo -e "${YELLOW}=== Backing Up Existing Configs ===${NC}"
             echo ""
             backup_configs "hypr"
@@ -438,18 +366,16 @@ update_install() {
             backup_configs "gtk-3.0"
             echo ""
             
-            # Ask for machine type
             echo -e "${BLUE}Select machine type:${NC}"
             echo "1) Desktop (3 monitors)"
             echo "2) Laptop (built-in + external)"
-            MACHINE_TYPE=$(get_menu_choice "Enter choice" 1 2)
+            read -p "Enter choice [1-2]: " MACHINE_TYPE
             
             case $MACHINE_TYPE in
                 1) MONITOR_CONFIG="monitors-desktop.lua" ;;
                 2) MONITOR_CONFIG="monitors-laptop.lua" ;;
             esac
             
-            # Use current theme
             THEME="$CURRENT_THEME"
             if [ "$THEME" = "unknown" ]; then
                 echo ""
@@ -458,7 +384,7 @@ update_install() {
                 echo "2) Gruvbox Dark (warm retro)"
                 echo "3) Nord (cool blue-gray)"
                 echo "4) Tokyo Night (modern dark blue)"
-                THEME_CHOICE=$(get_menu_choice "Enter choice" 1 4)
+                read -p "Enter choice [1-4]: " THEME_CHOICE
                 
                 case $THEME_CHOICE in
                     1) THEME="catppuccin" ;;
@@ -468,10 +394,10 @@ update_install() {
                 esac
             fi
             
-            # Get current keyboard layout
             KEYBOARD_LAYOUT=$(grep "kb_layout = " ~/.config/hypr/hyprland.lua | cut -d'"' -f2)
             if [ -z "$KEYBOARD_LAYOUT" ]; then
-                KEYBOARD_LAYOUT=$(get_input "Keyboard layout" "pt")
+                read -p "Keyboard layout [default: pt]: " KEYBOARD_LAYOUT
+                KEYBOARD_LAYOUT=${KEYBOARD_LAYOUT:-pt}
             fi
             
             install_packages
@@ -482,14 +408,13 @@ update_install() {
             ;;
             
         3)
-            # Change theme only
             echo ""
             echo -e "${BLUE}Select color theme:${NC}"
             echo "1) Catppuccin Mocha (purple/blue)"
             echo "2) Gruvbox Dark (warm retro)"
             echo "3) Nord (cool blue-gray)"
             echo "4) Tokyo Night (modern dark blue)"
-            THEME_CHOICE=$(get_menu_choice "Enter choice" 1 4)
+            read -p "Enter choice [1-4]: " THEME_CHOICE
             
             case $THEME_CHOICE in
                 1) THEME="catppuccin" ;;
@@ -502,14 +427,12 @@ update_install() {
             ;;
             
         4)
-            # Change keyboard layout only
-            KEYBOARD_LAYOUT=$(get_input "Keyboard layout" "pt")
+            read -p "Keyboard layout [default: pt]: " KEYBOARD_LAYOUT
+            KEYBOARD_LAYOUT=${KEYBOARD_LAYOUT:-pt}
             configure_keyboard
             ;;
             
         5)
-            # Full update
-            # Backup and update everything
             echo -e "${YELLOW}=== Backing Up Existing Configs ===${NC}"
             echo ""
             backup_configs "hypr"
@@ -520,25 +443,23 @@ update_install() {
             backup_configs "gtk-3.0"
             echo ""
             
-            # Ask for machine type
             echo -e "${BLUE}Select machine type:${NC}"
             echo "1) Desktop (3 monitors)"
             echo "2) Laptop (built-in + external)"
-            MACHINE_TYPE=$(get_menu_choice "Enter choice" 1 2)
+            read -p "Enter choice [1-2]: " MACHINE_TYPE
             
             case $MACHINE_TYPE in
                 1) MONITOR_CONFIG="monitors-desktop.lua" ;;
                 2) MONITOR_CONFIG="monitors-laptop.lua" ;;
             esac
             
-            # Ask for theme
             echo ""
             echo -e "${BLUE}Select color theme:${NC}"
             echo "1) Catppuccin Mocha (purple/blue)"
             echo "2) Gruvbox Dark (warm retro)"
             echo "3) Nord (cool blue-gray)"
             echo "4) Tokyo Night (modern dark blue)"
-            THEME_CHOICE=$(get_menu_choice "Enter choice" 1 4)
+            read -p "Enter choice [1-4]: " THEME_CHOICE
             
             case $THEME_CHOICE in
                 1) THEME="catppuccin" ;;
@@ -547,8 +468,8 @@ update_install() {
                 4) THEME="tokyo-night" ;;
             esac
             
-            # Ask for keyboard layout
-            KEYBOARD_LAYOUT=$(get_input "Keyboard layout" "pt")
+            read -p "Keyboard layout [default: pt]: " KEYBOARD_LAYOUT
+            KEYBOARD_LAYOUT=${KEYBOARD_LAYOUT:-pt}
             
             install_packages
             install_configs
@@ -556,9 +477,13 @@ update_install() {
             configure_keyboard
             enable_services
             ;;
+            
+        *)
+            echo -e "${RED}Invalid choice${NC}"
+            exit 1
+            ;;
     esac
     
-    # Make scripts executable
     chmod +x ~/.config/rofi/launcher/launcher.sh 2>/dev/null || true
 }
 
@@ -572,7 +497,7 @@ if detect_existing_install; then
     echo "What would you like to do?"
     echo "1) Fresh installation (backup and reinstall everything)"
     echo "2) Update existing installation"
-    INSTALL_MODE=$(get_menu_choice "Enter choice" 1 2)
+    read -p "Enter choice [1-2]: " INSTALL_MODE
 else
     echo -e "${YELLOW}No existing installation detected${NC}"
     echo ""
@@ -582,17 +507,17 @@ fi
 
 echo ""
 
-# Execute chosen mode
 case $INSTALL_MODE in
     1) fresh_install ;;
     2) update_install ;;
+    *) echo -e "${RED}Invalid choice${NC}"; exit 1 ;;
 esac
 
 # Cleanup temp directory if we created one
-if [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ]; then
+if [ -n "$WKSTATIONZ_DOWNLOADED" ] && [ -d "$WKSTATIONZ_DIR" ]; then
     echo ""
     echo -e "${BLUE}Cleaning up temporary files...${NC}"
-    rm -rf "$TEMP_DIR"
+    rm -rf "$WKSTATIONZ_DIR"
     log "Cleaned up temp directory"
 fi
 
