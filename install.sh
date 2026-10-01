@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Arch Setup - Automated Arch Linux Desktop Installer
-# Repository: https://github.com/bak0/arch-setup
-# Usage: curl -fsSL https://raw.githubusercontent.com/bak0/arch-setup/main/install.sh | bash
+# Repository: https://github.com/Bak0/wkstationz
+# Usage: curl -fsSL https://raw.githubusercontent.com/Bak0/wkstationz/main/install.sh | bash
 
 set -e
 
@@ -25,8 +25,26 @@ if [ "$EUID" -eq 0 ]; then
     exit 1
 fi
 
-# Get script directory
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# Detect if script is being piped and download if necessary
+if [ ! -t 0 ] || [ "${BASH_SOURCE[0]}" = "/dev/stdin" ] || [ "${BASH_SOURCE[0]}" = "/proc/self/fd/0" ]; then
+    echo -e "${BLUE}Detected piped installation, downloading repository...${NC}"
+    
+    # Check if git is available
+    if ! command -v git &> /dev/null; then
+        echo -e "${YELLOW}Git not found, installing...${NC}"
+        sudo pacman -S --noconfirm git
+    fi
+    
+    TEMP_DIR=$(mktemp -d)
+    cd "$TEMP_DIR"
+    git clone https://github.com/Bak0/wkstationz.git .
+    SCRIPT_DIR="$TEMP_DIR"
+    echo -e "${GREEN}Repository downloaded to $TEMP_DIR${NC}"
+    echo ""
+else
+    # Get script directory
+    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+fi
 
 # Interactive prompts
 echo -e "${YELLOW}=== Configuration ===${NC}"
@@ -160,6 +178,13 @@ bash "$SCRIPT_DIR/scripts/enable-services.sh"
 
 # Make scripts executable
 chmod +x ~/.config/rofi/launcher/launcher.sh 2>/dev/null || true
+
+# Cleanup temp directory if we created one
+if [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ]; then
+    echo ""
+    echo -e "${BLUE}Cleaning up temporary files...${NC}"
+    rm -rf "$TEMP_DIR"
+fi
 
 # Completion message
 echo ""
