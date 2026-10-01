@@ -63,7 +63,7 @@ if [ ! -t 0 ] || [ "${BASH_SOURCE[0]}" = "/dev/stdin" ] || [ "${BASH_SOURCE[0]}"
     git clone https://github.com/Bak0/wkstationz.git "$TEMP_DIR"
     
     # Re-execute from downloaded location with proper stdin
-    exec "$TEMP_DIR/install.sh"
+    exec bash "$TEMP_DIR/install.sh"
 else
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 fi
