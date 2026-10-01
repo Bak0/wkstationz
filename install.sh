@@ -41,6 +41,9 @@ if [ -z "$WKSTATIONZ_DOWNLOADED" ]; then
     echo -e "${BLUE}Downloading repository to $TEMP_DIR...${NC}"
     git clone https://github.com/Bak0/wkstationz.git "$TEMP_DIR"
     
+    # Make install.sh executable
+    chmod +x "$TEMP_DIR/install.sh"
+    
     # Re-execute from downloaded location
     export WKSTATIONZ_DOWNLOADED=1
     export WKSTATIONZ_DIR="$TEMP_DIR"
