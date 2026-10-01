@@ -1,14 +1,17 @@
 #!/bin/bash
 
-# Main installer script - version-based with interactive prompts
-# Usage: ./install.sh (from the cloned repository directory)
-# Or use: curl -fsSL https://raw.githubusercontent.com/Bak0/wkstationz/main/bootstrap.sh | bash
+# Main installer script - location-independent
+# Can be run from anywhere, will set up work directory in /tmp
+# Usage: ./install.sh (from anywhere)
 
 set -e
 
 # Version
 VERSION="1.0.0"
 INSTALLED_VERSION_FILE="$HOME/.config/wkstationz/VERSION"
+
+# Working directory
+WORK_DIR="/tmp/wkstationz-work"
 
 # Colors
 RED='\033[0;31m'
@@ -23,39 +26,70 @@ echo -e "${BLUE}║   wkstationz v$VERSION - Installer     ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
 echo ""
 
-# Get script directory - handle both direct execution and sourced execution
-if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
-    # Script is being sourced
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-else
-    # Script is being executed
-    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-fi
+# Function to check if all required files exist
+check_files() {
+    local dir=$1
+    [ -f "$dir/packages.list" ] && \
+    [ -f "$dir/aur-packages.list" ] && \
+    [ -f "$dir/scripts/install-yay.sh" ] && \
+    [ -f "$dir/scripts/apply-theme.sh" ] && \
+    [ -f "$dir/scripts/enable-services.sh" ] && \
+    [ -d "$dir/configs/hyprland" ] && \
+    [ -d "$dir/configs/quickshell" ] && \
+    [ -d "$dir/configs/rofi" ] && \
+    [ -d "$dir/configs/kitty" ] && \
+    [ -d "$dir/configs/swaync" ] && \
+    [ -d "$dir/configs/gtk-3.0" ] && \
+    [ -d "$dir/themes" ]
+}
 
-# Validate we're in the right directory
-if [ ! -f "$SCRIPT_DIR/packages.list" ]; then
-    echo -e "${RED}Error: packages.list not found in $SCRIPT_DIR${NC}"
+# Function to set up work directory
+setup_work_dir() {
+    # Clean up any existing work directory
+    if [ -d "$WORK_DIR" ]; then
+        echo -e "${YELLOW}Cleaning up previous work directory...${NC}"
+        rm -rf "$WORK_DIR"
+    fi
+    
+    # Create work directory
+    mkdir -p "$WORK_DIR"
+    echo -e "${BLUE}Setting up work directory: $WORK_DIR${NC}"
+    
+    # Check if we're already in a valid repository
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    
+    if check_files "$script_dir"; then
+        echo -e "${GREEN}✓ Running from valid repository${NC}"
+        # Copy files to work directory
+        cp -r "$script_dir"/* "$WORK_DIR"/
+    else
+        echo -e "${YELLOW}Required files not found in current location${NC}"
+        echo -e "${BLUE}Downloading repository...${NC}"
+        
+        # Check if git is available
+        if ! command -v git &> /dev/null; then
+            echo -e "${YELLOW}Git not found, installing...${NC}"
+            sudo pacman -S --noconfirm git
+        fi
+        
+        # Clone repository
+        if ! git clone https://github.com/Bak0/wkstationz.git "$WORK_DIR" 2>/dev/null; then
+            echo -e "${RED}Failed to clone repository${NC}"
+            rm -rf "$WORK_DIR"
+            exit 1
+        fi
+    fi
+    
+    echo -e "${GREEN}✓ Work directory ready${NC}"
     echo ""
-    echo "This script must be run from the cloned repository directory."
-    echo "Current directory: $(pwd)"
-    echo "Script location: $SCRIPT_DIR"
-    echo ""
-    echo "If you're using curl, make sure you're running bootstrap.sh, not install.sh directly."
-    echo ""
-    echo "Correct usage:"
-    echo "  curl -fsSL https://raw.githubusercontent.com/Bak0/wkstationz/main/bootstrap.sh | bash"
-    echo ""
-    echo "Or clone and run manually:"
-    echo "  git clone https://github.com/Bak0/wkstationz.git"
-    echo "  cd wkstationz"
-    echo "  ./install.sh"
-    exit 1
-fi
+}
 
-if [ ! -f "$SCRIPT_DIR/aur-packages.list" ]; then
-    echo -e "${RED}Error: aur-packages.list not found in $SCRIPT_DIR${NC}"
-    exit 1
-fi
+# Set up work directory
+setup_work_dir
+
+# Change to work directory
+cd "$WORK_DIR"
+SCRIPT_DIR="$WORK_DIR"
 
 # Logging
 LOG_FILE="/tmp/wkstationz-install.log"
@@ -100,13 +134,22 @@ if [ -f "$INSTALLED_VERSION_FILE" ]; then
         echo "1) Update configs (force-update)"
         echo "2) Fresh installation (force-install)"
         echo "3) Exit"
-        read -p "Choose option [1-3]: " choice < /dev/tty
+        read -p "Choose option [1-3]: " choice
         
         case $choice in
             1) INSTALL_MODE="update" ;;
             2) INSTALL_MODE="install" ;;
-            3) exit 0 ;;
-            *) echo -e "${RED}Invalid choice${NC}"; exit 1 ;;
+            3) 
+                cd /
+                rm -rf "$WORK_DIR"
+                exit 0 
+                ;;
+            *) 
+                echo -e "${RED}Invalid choice${NC}"
+                cd /
+                rm -rf "$WORK_DIR"
+                exit 1 
+                ;;
         esac
     else
         # Compare versions (simple string comparison for now)
@@ -118,12 +161,21 @@ if [ -f "$INSTALLED_VERSION_FILE" ]; then
             echo ""
             echo "1) Downgrade (force-install)"
             echo "2) Exit"
-            read -p "Choose option [1-2]: " choice < /dev/tty
+            read -p "Choose option [1-2]: " choice
             
             case $choice in
                 1) INSTALL_MODE="install" ;;
-                2) exit 0 ;;
-                *) echo -e "${RED}Invalid choice${NC}"; exit 1 ;;
+                2) 
+                    cd /
+                    rm -rf "$WORK_DIR"
+                    exit 0 
+                    ;;
+                *) 
+                    echo -e "${RED}Invalid choice${NC}"
+                    cd /
+                    rm -rf "$WORK_DIR"
+                    exit 1 
+                    ;;
             esac
         fi
     fi
@@ -140,7 +192,7 @@ echo ""
 echo -e "${YELLOW}=== Machine Type ===${NC}"
 echo "1) Desktop (3 monitors)"
 echo "2) Laptop (built-in + external)"
-read -p "Choose option [1-2]: " machine_choice < /dev/tty
+read -p "Choose option [1-2]: " machine_choice
 
 case $machine_choice in
     1)
@@ -153,6 +205,8 @@ case $machine_choice in
         ;;
     *)
         echo -e "${RED}Invalid choice${NC}"
+        cd /
+        rm -rf "$WORK_DIR"
         exit 1
         ;;
 esac
@@ -166,7 +220,7 @@ echo "1) Catppuccin Mocha (purple/blue) [DEFAULT]"
 echo "2) Gruvbox Dark (warm retro)"
 echo "3) Nord (cool blue-gray)"
 echo "4) Tokyo Night (modern dark blue)"
-read -p "Choose option [1-4, or press Enter for default]: " theme_choice < /dev/tty
+read -p "Choose option [1-4, or press Enter for default]: " theme_choice
 
 case $theme_choice in
     1|"") THEME="catppuccin" ;;
@@ -184,7 +238,7 @@ echo ""
 
 # Interactive: Keyboard layout
 echo -e "${YELLOW}=== Keyboard Layout ===${NC}"
-read -p "Keyboard layout [default: pt]: " KEYBOARD < /dev/tty
+read -p "Keyboard layout [default: pt]: " KEYBOARD
 KEYBOARD=${KEYBOARD:-pt}
 
 echo -e "${GREEN}✓ Keyboard: $KEYBOARD${NC}"
@@ -201,11 +255,13 @@ echo "  Theme: $THEME"
 echo "  Keyboard: $KEYBOARD"
 echo ""
 
-read -p "Proceed with installation? [Y/n]: " confirm < /dev/tty
+read -p "Proceed with installation? [Y/n]: " confirm
 confirm=${confirm:-Y}
 
 if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
     echo -e "${YELLOW}Installation cancelled${NC}"
+    cd /
+    rm -rf "$WORK_DIR"
     exit 0
 fi
 
@@ -436,3 +492,9 @@ echo -e "${GREEN}Log file saved to: $LOG_FILE${NC}"
 echo -e "${GREEN}Enjoy your new setup!${NC}"
 
 log "Installation completed successfully"
+
+# Cleanup
+cd /
+rm -rf "$WORK_DIR"
+echo ""
+echo -e "${GREEN}✓ Work directory cleaned up${NC}"

@@ -17,42 +17,45 @@ echo -e "${BLUE}║     Arch Setup - Desktop Installer     ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
 echo ""
 
+# Working directory
+WORK_DIR="/tmp/wkstationz-work"
+
+# Clean up any existing work directory
+if [ -d "$WORK_DIR" ]; then
+    echo -e "${YELLOW}Cleaning up previous work directory...${NC}"
+    rm -rf "$WORK_DIR"
+fi
+
 # Check if git is available
 if ! command -v git &> /dev/null; then
     echo -e "${YELLOW}Git not found, installing...${NC}"
     sudo pacman -S --noconfirm git
 fi
 
-# Create temp directory
-TEMP_DIR=$(mktemp -d)
-echo -e "${BLUE}Downloading repository...${NC}"
+# Create work directory
+mkdir -p "$WORK_DIR"
+echo -e "${BLUE}Setting up work directory: $WORK_DIR${NC}"
 
 # Clone repository
-if ! git clone https://github.com/Bak0/wkstationz.git "$TEMP_DIR" 2>/dev/null; then
+echo -e "${BLUE}Downloading repository...${NC}"
+if ! git clone https://github.com/Bak0/wkstationz.git "$WORK_DIR" 2>/dev/null; then
     echo -e "${RED}Failed to clone repository${NC}"
-    rm -rf "$TEMP_DIR"
+    rm -rf "$WORK_DIR"
     exit 1
 fi
 
 echo -e "${GREEN}✓ Repository downloaded${NC}"
 echo ""
 
-# Run the installer (not piped, so stdin works normally)
-cd "$TEMP_DIR"
-
-# Verify files exist
-if [ ! -f "install.sh" ] || [ ! -f "packages.list" ]; then
-    echo -e "${RED}Error: Required files not found in cloned repository${NC}"
-    cd /
-    rm -rf "$TEMP_DIR"
-    exit 1
-fi
-
+# Run the installer from work directory
+cd "$WORK_DIR"
 ./install.sh
 EXIT_CODE=$?
 
 # Cleanup
 cd /
-rm -rf "$TEMP_DIR"
+rm -rf "$WORK_DIR"
+echo ""
+echo -e "${GREEN}✓ Cleanup complete${NC}"
 
 exit $EXIT_CODE
