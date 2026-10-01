@@ -23,8 +23,29 @@ log() {
 # Error handling
 trap 'echo -e "${RED}Error on line $LINENO. Check $LOG_FILE for details.${NC}"' ERR
 
-# Check if running from downloaded location, if not, download and re-execute
-if [ -z "$WKSTATIONZ_DOWNLOADED" ]; then
+# Check if running as root
+if [ "$EUID" -eq 0 ]; then
+    echo -e "${RED}Error: Do not run this script as root${NC}"
+    echo "Please run as a normal user"
+    exit 1
+fi
+
+# Request sudo credentials upfront
+echo -e "${BLUE}Requesting sudo privileges...${NC}"
+if ! sudo -v; then
+    echo -e "${RED}Failed to obtain sudo privileges${NC}"
+    exit 1
+fi
+
+# Keep sudo credentials alive in background
+(while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &)
+
+echo -e "${GREEN}✓ Sudo privileges obtained${NC}"
+echo ""
+
+# Determine script directory
+# If running from piped curl, download the repo first
+if [ ! -t 0 ] || [ "${BASH_SOURCE[0]}" = "/dev/stdin" ] || [ "${BASH_SOURCE[0]}" = "/proc/self/fd/0" ]; then
     echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
     echo -e "${BLUE}║     Arch Setup - Desktop Installer     ║${NC}"
     echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
@@ -33,7 +54,7 @@ if [ -z "$WKSTATIONZ_DOWNLOADED" ]; then
     # Check if git is available
     if ! command -v git &> /dev/null; then
         echo -e "${YELLOW}Git not found, installing...${NC}"
-        sudo pacman -S --noconfirm git
+        pacman -S --noconfirm git
     fi
     
     # Download repository
@@ -41,17 +62,12 @@ if [ -z "$WKSTATIONZ_DOWNLOADED" ]; then
     echo -e "${BLUE}Downloading repository to $TEMP_DIR...${NC}"
     git clone https://github.com/Bak0/wkstationz.git "$TEMP_DIR"
     
-    # Make install.sh executable
-    chmod +x "$TEMP_DIR/install.sh"
-    
-    # Re-execute from downloaded location
-    export WKSTATIONZ_DOWNLOADED=1
-    export WKSTATIONZ_DIR="$TEMP_DIR"
-    exec "$TEMP_DIR/install.sh"
+    SCRIPT_DIR="$TEMP_DIR"
+    DOWNLOADED=1
+else
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    DOWNLOADED=0
 fi
-
-# Now we're running from the downloaded/cloned location
-SCRIPT_DIR="${WKSTATIONZ_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 
 echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
 echo -e "${BLUE}║     Arch Setup - Desktop Installer     ║${NC}"
@@ -59,13 +75,6 @@ echo -e "${BLUE}╚════════════════════�
 echo ""
 
 log "Starting installation from $SCRIPT_DIR"
-
-# Check if running as root
-if [ "$EUID" -eq 0 ]; then
-    echo -e "${RED}Error: Do not run this script as root${NC}"
-    echo "Please run as a normal user"
-    exit 1
-fi
 
 # Function to backup existing configs
 backup_configs() {
@@ -87,7 +96,7 @@ install_package() {
         log "$package already installed, skipping"
     else
         log "Installing $package"
-        sudo pacman -S --noconfirm --needed "$package"
+        pacman -S --noconfirm --needed "$package"
     fi
 }
 
@@ -134,7 +143,7 @@ install_packages() {
     
     # Update system
     echo -e "${BLUE}Updating system...${NC}"
-    sudo pacman -Syu --noconfirm
+    pacman -Syu --noconfirm
     
     # Install base packages
     echo -e "${BLUE}Installing base packages...${NC}"
@@ -517,10 +526,10 @@ case $INSTALL_MODE in
 esac
 
 # Cleanup temp directory if we created one
-if [ -n "$WKSTATIONZ_DOWNLOADED" ] && [ -d "$WKSTATIONZ_DIR" ]; then
+if [ "$DOWNLOADED" = "1" ] && [ -d "$SCRIPT_DIR" ]; then
     echo ""
     echo -e "${BLUE}Cleaning up temporary files...${NC}"
-    rm -rf "$WKSTATIONZ_DIR"
+    rm -rf "$SCRIPT_DIR"
     log "Cleaned up temp directory"
 fi
 
