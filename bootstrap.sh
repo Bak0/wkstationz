@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Bootstrap script - downloaded via curl
-# This script clones the repository and runs the actual installer
+# Bootstrap script - downloads and runs the installer
+# Usage: curl -fsSL https://raw.githubusercontent.com/Bak0/wkstationz/main/bootstrap.sh | bash
 
 set -e
 
@@ -25,10 +25,10 @@ fi
 
 # Create temp directory
 TEMP_DIR=$(mktemp -d)
-echo -e "${BLUE}Downloading repository to $TEMP_DIR...${NC}"
+echo -e "${BLUE}Downloading repository...${NC}"
 
 # Clone repository
-if ! git clone https://github.com/Bak0/wkstationz.git "$TEMP_DIR"; then
+if ! git clone https://github.com/Bak0/wkstationz.git "$TEMP_DIR" 2>/dev/null; then
     echo -e "${RED}Failed to clone repository${NC}"
     rm -rf "$TEMP_DIR"
     exit 1
@@ -37,12 +37,13 @@ fi
 echo -e "${GREEN}✓ Repository downloaded${NC}"
 echo ""
 
-# Run the actual installer with proper terminal input
+# Run the installer (not piped, so stdin works normally)
 cd "$TEMP_DIR"
-./install.sh < /dev/tty
+./install.sh
+EXIT_CODE=$?
 
 # Cleanup
 cd /
 rm -rf "$TEMP_DIR"
-echo ""
-echo -e "${GREEN}✓ Cleanup complete${NC}"
+
+exit $EXIT_CODE

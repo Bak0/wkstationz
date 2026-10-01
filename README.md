@@ -1,19 +1,73 @@
-# Arch Setup
+# wkstationz
 
 Automated Arch Linux desktop setup with Hyprland, Quickshell, and essential applications.
 
 ## Quick Start
 
-### Option 1: Direct Curl (Recommended for fresh installs)
+### One-liner installation
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Bak0/wkstationz/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Bak0/wkstationz/main/bootstrap.sh | bash -s -- --desktop --catppuccin
 ```
 
-### Option 2: Git Clone
+### Manual installation
 ```bash
 git clone https://github.com/Bak0/wkstationz.git
 cd wkstationz
-./install.sh
+./install.sh --desktop --catppuccin
+```
+
+## Usage
+
+```bash
+./install.sh [OPTIONS]
+
+Options:
+  --desktop          Desktop setup (3 monitors)
+  --laptop           Laptop setup (built-in + external)
+  --catppuccin       Use Catppuccin theme (purple/blue)
+  --gruvbox          Use Gruvbox theme (warm retro)
+  --nord             Use Nord theme (cool blue-gray)
+  --tokyo-night      Use Tokyo Night theme (modern dark blue)
+  --keyboard=XX      Keyboard layout (default: pt)
+  --force-install    Force fresh installation
+  --force-update     Force update installation
+  --help             Show help
+```
+
+### Examples
+
+**Desktop with Catppuccin theme:**
+```bash
+./install.sh --desktop --catppuccin
+```
+
+**Laptop with Nord theme and US keyboard:**
+```bash
+./install.sh --laptop --nord --keyboard=us
+```
+
+**Force fresh installation:**
+```bash
+./install.sh --desktop --gruvbox --force-install
+```
+
+**Update existing installation:**
+```bash
+./install.sh --desktop --tokyo-night --force-update
+```
+
+## Version Management
+
+The installer uses version-based logic:
+
+- **No existing installation**: Performs fresh installation
+- **Same version installed**: Shows message, use `--force-update` to update configs
+- **Newer version available**: Automatically performs update
+- **Older version installed**: Shows message, use `--force-install` to downgrade
+
+Check your installed version:
+```bash
+cat ~/.config/wkstationz/VERSION
 ```
 
 ## What's Included
@@ -34,24 +88,6 @@ cd wkstationz
 ### Audio
 - **PulseAudio** - Sound server with volume control
 
-## Installation Process
-
-The installer will prompt you for:
-
-1. **Machine Type**
-   - Desktop (3 monitors: left vertical, center main, right horizontal)
-   - Laptop (built-in + external monitor)
-
-2. **Color Theme**
-   - Catppuccin Mocha (purple/blue)
-   - Gruvbox Dark (warm retro)
-   - Nord (cool blue-gray)
-   - Tokyo Night (modern dark blue)
-
-3. **Keyboard Layout**
-   - Default: Portuguese (pt)
-   - Enter your preferred layout code
-
 ## Post-Installation
 
 ### First Boot
@@ -67,7 +103,7 @@ The installer will prompt you for:
 - `Super+L` - Lock screen
 - `Super+Q` - Close window
 - `Super+F` - Fullscreen
-- `Super+Arrows` - Move focus
+- `Super+Arrow keys` - Move focus
 - `Super+1-9` - Switch workspace
 - `Super+Shift+1-9` - Move window to workspace
 - `Print` - Screenshot (full screen)
@@ -89,6 +125,7 @@ All configurations are stored in `~/.config/`:
 - `kitty/` - Terminal configuration
 - `swaync/` - Notification daemon
 - `gtk-3.0/` - GTK theme settings
+- `wkstationz/` - Version tracking
 
 ### Changing Themes
 
@@ -110,13 +147,29 @@ For laptops with external monitors, you may need to adjust the monitor names. Fi
 hyprctl monitors
 ```
 
+## Updating
+
+Run the installer again with the same or different options:
+
+```bash
+cd ~/wkstationz  # or wherever you cloned it
+./install.sh --desktop --catppuccin --force-update
+```
+
+Or download and run the latest version:
+```bash
+curl -fsSL https://raw.githubusercontent.com/Bak0/wkstationz/main/bootstrap.sh | bash -s -- --desktop --catppuccin --force-update
+```
+
 ## Project Structure
 
 ```
 wkstationz/
-├── install.sh              # Main installation script
-├── packages.list           # Pacman packages
-├── aur-packages.list       # AUR packages
+├── VERSION                # Current version
+├── bootstrap.sh           # Download and run installer
+├── install.sh             # Main installation script
+├── packages.list          # Pacman packages
+├── aur-packages.list      # AUR packages
 ├── configs/
 │   ├── hyprland/          # Hyprland configs
 │   ├── quickshell/        # Quickshell configs
@@ -137,7 +190,7 @@ wkstationz/
 
 ## Troubleshooting
 
-### Waybar/Quickshell not starting
+### Quickshell not starting
 Check if Quickshell is running:
 ```bash
 ps aux | grep quickshell
@@ -165,29 +218,14 @@ Run the theme script manually:
 ~/.config/wkstationz/scripts/apply-theme.sh <theme-name>
 ```
 
-## Customization
-
-### Adding Packages
-
-Edit `packages.list` for pacman packages or `aur-packages.list` for AUR packages, then run:
+### Check installation logs
 ```bash
-# For pacman packages
-sudo pacman -S --needed $(cat packages.list | grep -v '^#' | grep -v '^$')
-
-# For AUR packages
-yay -S --needed $(cat aur-packages.list | grep -v '^#' | grep -v '^$')
-```
-
-### Modifying Keybinds
-
-Edit `~/.config/hypr/keybinds.lua` and reload:
-```bash
-hyprctl reload
+cat /tmp/wkstationz-install.log
 ```
 
 ## Requirements
 
-- Fresh Arch Linux installation
+- Fresh Arch Linux installation (or existing setup to update)
 - Internet connection
 - sudo privileges
 
