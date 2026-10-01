@@ -8,16 +8,16 @@ fail() { printf '%b\n' "${RED}Error: $*${NC}" >&2; exit 1; }
 if ! { exec 3<>/dev/tty; } 2>/dev/null; then fail "No interactive terminal found. Run from a terminal session."; fi
 
 # Determine script location - handle both direct execution and curl|bash
-if [[ -n "${BASH_SOURCE[0]:-}" ]]; then
-    SOURCE_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd) || fail "Cannot access script directory."
-else
-    # When run via curl | bash, use current directory or WKSTATIONZ_WORK_DIR
-    SOURCE_DIR="$(pwd)"
-fi
 if [[ -n "${WKSTATIONZ_WORK_DIR:-}" ]]; then
     SCRIPT_DIR="$WKSTATIONZ_WORK_DIR"
     CLEAN_WORK_DIR=0
 else
+    if [[ -n "${BASH_SOURCE[0]:-}" ]]; then
+        SOURCE_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd) || fail "Cannot access script directory."
+    else
+        # When run via curl | bash, use current directory
+        SOURCE_DIR="$(pwd)"
+    fi
     [[ -f "$SOURCE_DIR/packages.list" && -f "$SOURCE_DIR/VERSION" ]] || fail "packages.list and VERSION must be present beside install.sh. Clone the complete repository, not just install.sh."
     SCRIPT_DIR=$(mktemp -d /tmp/wkstationz.XXXXXX)
     CLEAN_WORK_DIR=1
