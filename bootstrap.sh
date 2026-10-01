@@ -8,7 +8,7 @@ readonly VERSION_FILE="$HOME/.config/wkstationz/VERSION"
 readonly RED='\033[0;31m' GREEN='\033[0;32m' YELLOW='\033[1;33m' BLUE='\033[0;34m' NC='\033[0m'
 WORK_DIR=""
 cleanup() {
-    if [[ -n "$WORK_DIR" && -d "$WORK_DIR" ]]; then
+    if [[ -n "${WORK_DIR:-}" && -d "$WORK_DIR" ]]; then
         rm -rf -- "$WORK_DIR"
     fi
 }

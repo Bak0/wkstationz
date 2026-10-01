@@ -7,7 +7,10 @@ readonly INSTALLED_VERSION_FILE="$HOME/.config/wkstationz/VERSION"
 fail() { printf '%b\n' "${RED}Error: $*${NC}" >&2; exit 1; }
 if ! { exec 3<>/dev/tty; } 2>/dev/null; then fail "No interactive terminal found. Run from a terminal session."; fi
 
-SOURCE_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+if [[ -z "${BASH_SOURCE[0]:-}" ]]; then
+    fail "Cannot determine script location. Run ./install.sh directly, not via curl | bash."
+fi
+SOURCE_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd) || fail "Cannot access script directory."
 if [[ -n "${WKSTATIONZ_WORK_DIR:-}" ]]; then
     SCRIPT_DIR="$WKSTATIONZ_WORK_DIR"
     CLEAN_WORK_DIR=0
