@@ -22,8 +22,8 @@ echo -e "${BLUE}║   wkstationz v$VERSION - Installer     ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
 echo ""
 
-# Get script directory
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Get script directory - use pwd since we should be in the right directory
+SCRIPT_DIR="$(pwd)"
 
 # Debug output
 echo "DEBUG: SCRIPT_DIR = $SCRIPT_DIR"

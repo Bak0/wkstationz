@@ -39,6 +39,8 @@ echo ""
 
 # Run the installer (not piped, so stdin works normally)
 cd "$TEMP_DIR"
+echo "DEBUG: Running install.sh from $(pwd)"
+ls -la install.sh packages.list
 ./install.sh
 EXIT_CODE=$?
 
