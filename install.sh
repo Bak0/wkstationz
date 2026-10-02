@@ -13,6 +13,8 @@ SUDO_KEEPALIVE_PID=""
 LOG_FILE="/tmp/wkstationz-install.log"
 
 fail() { printf '%b\n' "${RED}Error: $*${NC}" >&2; exit 1; }
+warn() { printf '%b\n' "${YELLOW}  ! $*${NC}" >&2; }
+ok()   { printf '%b\n' "${GREEN}  + $*${NC}"; }
 
 cleanup() {
     if [[ -n "$SUDO_KEEPALIVE_PID" ]]; then
@@ -176,11 +178,20 @@ backup_configs() {
 
 install_packages() {
     printf '\nInstalling/updating packages...\n'
-    sudo pacman -Syu --needed --noconfirm
+    local failures=()
+
+    # A refresh failure must not abort the install; per-package reporting below
+    # covers anything that is genuinely unavailable.
+    if ! sudo pacman -Syu --needed --noconfirm; then
+        warn "system update reported errors; continuing with package lists"
+    fi
 
     while IFS= read -r package || [[ -n "$package" ]]; do
         [[ -z "$package" || "$package" == \#* ]] && continue
-        sudo pacman -S --needed --noconfirm "$package"
+        if ! sudo pacman -S --needed --noconfirm "$package"; then
+            warn "failed to install '$package'"
+            failures+=("$package")
+        fi
     done < "$SCRIPT_DIR/packages.list"
 
     if ! command -v yay >/dev/null 2>&1; then
@@ -189,8 +200,18 @@ install_packages() {
 
     while IFS= read -r package || [[ -n "$package" ]]; do
         [[ -z "$package" || "$package" == \#* ]] && continue
-        yay -S --needed --noconfirm "$package"
+        if ! yay -S --needed --noconfirm "$package"; then
+            warn "failed to install '$package' from AUR"
+            failures+=("$package")
+        fi
     done < "$SCRIPT_DIR/aur-packages.list"
+
+    if [ "${#failures[@]}" -gt 0 ]; then
+        warn "${#failures[@]} package(s) failed: ${failures[*]}"
+        warn "re-run the installer to retry, or install them manually"
+    else
+        ok "all packages installed"
+    fi
 }
 
 install_configs() {
