@@ -77,7 +77,7 @@ fi
 for required in \
     VERSION packages.list aur-packages.list \
     scripts/install-yay.sh scripts/apply-theme.sh scripts/enable-services.sh \
-    configs/hyprland/hyprland.lua configs/hyprland/keybinds.lua \
+    configs/hyprland/keybinds.lua \
     configs/hyprland/monitors-desktop.lua configs/hyprland/monitors-laptop.lua \
     configs/quickshell/shell.qml \
     configs/rofi/launcher/launcher.sh configs/kitty/kitty.conf \
@@ -97,6 +97,7 @@ validate_lua() {
 
     local file
     for file in "$SCRIPT_DIR"/configs/hyprland/*.lua; do
+        [[ -f "$file" ]] || continue
         luac -p "$file" || fail "Invalid Lua syntax in $file. Fix it before installing."
     done
     log "Validated Hyprland Lua configuration"
@@ -217,11 +218,23 @@ install_packages() {
 install_configs() {
     mkdir -p "$HOME/.config"/{hypr,quickshell,rofi,kitty,swaync,gtk-3.0,wkstationz}
 
-    # Remove the exact configs this installer manages so old broken entries do not persist.
-    rm -f "$HOME/.config/hypr/hyprland.lua" "$HOME/.config/hypr/keybinds.lua" "$HOME/.config/hypr/monitors.lua"
-
-    cp -a "$SCRIPT_DIR/configs/hyprland/." "$HOME/.config/hypr/"
+    # Copy monitor configuration
     cp "$SCRIPT_DIR/configs/hyprland/$MONITOR_CONFIG" "$HOME/.config/hypr/monitors.lua"
+    log "Copied monitor configuration"
+
+    # Copy custom keybinds overlay (if illogical-impulse is installed, this goes to custom/)
+    if [[ -d "$HOME/.config/hypr/hyprland" ]]; then
+        # illogical-impulse structure detected - overlay to custom/
+        mkdir -p "$HOME/.config/hypr/custom"
+        cp "$SCRIPT_DIR/configs/hyprland/keybinds.lua" "$HOME/.config/hypr/custom/keybinds.lua"
+        log "Overlayed custom keybinds to illogical-impulse structure"
+    else
+        # Standalone Hyprland - copy directly
+        cp "$SCRIPT_DIR/configs/hyprland/keybinds.lua" "$HOME/.config/hypr/keybinds.lua"
+        log "Copied standalone keybinds"
+    fi
+
+    # Copy other configs
     cp -a "$SCRIPT_DIR/configs/quickshell/." "$HOME/.config/quickshell/"
     cp -a "$SCRIPT_DIR/configs/rofi/." "$HOME/.config/rofi/"
     cp -a "$SCRIPT_DIR/configs/kitty/." "$HOME/.config/kitty/"
@@ -232,14 +245,25 @@ install_configs() {
     cp "$SCRIPT_DIR/VERSION" "$INSTALLED_VERSION_FILE"
 
     chmod +x "$HOME/.config/rofi/launcher/launcher.sh" "$HOME/.config/wkstationz/scripts/"*.sh
-    # Replace only the layout value. The trailing comma must be preserved:
-    # a broad .* match removes it and breaks the Lua table below.
-    sed -i "s/kb_layout = \"[^\"]*\"/kb_layout = \"$KEYBOARD\"/" "$HOME/.config/hypr/hyprland.lua"
 
-    # Final post-copy validation against the installed config.
-    luac -p "$HOME/.config/hypr/hyprland.lua" \
-        "$HOME/.config/hypr/keybinds.lua" \
-        "$HOME/.config/hypr/monitors.lua" || fail "Installed Hyprland Lua config failed validation."
+    # Update keyboard layout in the appropriate location
+    if [[ -d "$HOME/.config/hypr/hyprland" ]]; then
+        # illogical-impulse: update in general.lua
+        if [[ -f "$HOME/.config/hypr/hyprland/general.lua" ]]; then
+            sed -i "s/kb_layout = \"[^\"]*\"/kb_layout = \"$KEYBOARD\"/" "$HOME/.config/hypr/hyprland/general.lua"
+            log "Updated keyboard layout in illogical-impulse general.lua"
+        fi
+    else
+        # Standalone: update in hyprland.lua if it exists
+        if [[ -f "$HOME/.config/hypr/hyprland.lua" ]]; then
+            sed -i "s/kb_layout = \"[^\"]*\"/kb_layout = \"$KEYBOARD\"/" "$HOME/.config/hypr/hyprland.lua"
+            log "Updated keyboard layout in standalone hyprland.lua"
+        fi
+    fi
+
+    # Validate monitor config
+    luac -p "$HOME/.config/hypr/monitors.lua" || fail "Monitor configuration failed validation."
+    log "Validated monitor configuration"
 }
 
 for component in hypr quickshell rofi kitty swaync gtk-3.0; do
@@ -257,4 +281,13 @@ printf '%s\n' \
     "Theme: Catppuccin Mocha" \
     "Keyboard: $KEYBOARD" \
     "Log: $LOG_FILE"
+
+cat <<BANNER
+
+$(printf '%b' "${GREEN}${BLUE}========================================${NC}")
+$(printf '%b' "${GREEN}   Reboot to apply and start the desktop. ${NC}")
+$(printf '%b' "${GREEN}${BLUE}========================================${NC}")
+
+BANNER
+
 log "Installation completed successfully"
