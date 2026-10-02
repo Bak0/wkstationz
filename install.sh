@@ -211,7 +211,9 @@ install_configs() {
     cp "$SCRIPT_DIR/VERSION" "$INSTALLED_VERSION_FILE"
 
     chmod +x "$HOME/.config/rofi/launcher/launcher.sh" "$HOME/.config/wkstationz/scripts/"*.sh
-    sed -i "s/kb_layout = .*/kb_layout = \"$KEYBOARD\"/" "$HOME/.config/hypr/hyprland.lua"
+    # Replace only the layout value. The trailing comma must be preserved:
+    # a broad .* match removes it and breaks the Lua table below.
+    sed -i "s/kb_layout = \"[^\"]*\"/kb_layout = \"$KEYBOARD\"/" "$HOME/.config/hypr/hyprland.lua"
 
     # Final post-copy validation against the installed config.
     luac -p "$HOME/.config/hypr/hyprland.lua" \
