@@ -14,7 +14,7 @@ if [ -z "$THEME" ]; then
 fi
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-THEME_DIR="$SCRIPT_DIR/../themes/$THEME"
+THEME_DIR="$HOME/.config/wkstationz/themes/$THEME"
 
 if [ ! -d "$THEME_DIR" ]; then
     echo "Error: Theme '$THEME' not found"
