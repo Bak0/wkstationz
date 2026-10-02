@@ -1,56 +1,47 @@
-# Arch Setup - Base Packages (pacman)
-# One package per line, comments start with #
-
-# Wayland & Compositor
 hyprland
 xdg-desktop-portal-hyprland
-
-# Status Bar & Widgets
+xdg-desktop-portal-gtk
+xdg-utils
 quickshell
-
-# Notifications
 swaync
-
-# App Launcher
 rofi
-
-# Terminal
 kitty
-
-# File Manager
 thunar
 thunar-volman
 tumbler
-
-# Audio
-pulseaudio
-pulseaudio-alsa
-pulseaudio-bluetooth
+gvfs
+pipewire
+pipewire-pulse
+pipewire-alsa
+wireplumber
 pavucontrol
-
-# Utilities
 brightnessctl
 playerctl
 wl-clipboard
+cliphist
 grim
 slurp
+swappy
+wf-recorder
+hyprlock
+hypridle
 sddm
-
-# Fonts
+polkit-kde-agent
+gnome-keyring
 ttf-jetbrains-mono-nerd
 ttf-font-awesome
-
-# GTK Theming
+ttf-dejavu
 gtk3
-adw-gtk-theme
+qt6ct
+kvantum
 papirus-icon-theme
-
-# Archive support
+lua
+jq
+bc
+git
+base-devel
+imagemagick
 p7zip
 unzip
-
-# Image viewer
 imv
-
-# Text editor
 nano

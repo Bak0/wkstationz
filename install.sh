@@ -1,44 +1,32 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-readonly RED='\033[0;31m' GREEN='\033[0;32m' YELLOW='\033[1;33m' BLUE='\033[0;34m' NC='\033[0m'
+readonly REPO="Bak0/wkstationz"
+readonly RAW="https://raw.githubusercontent.com/${REPO}/main"
+readonly ARCHIVE="https://github.com/${REPO}/archive/refs/heads/main.tar.gz"
 readonly INSTALLED_VERSION_FILE="$HOME/.config/wkstationz/VERSION"
+readonly RED='\033[0;31m' GREEN='\033[0;32m' YELLOW='\033[1;33m' BLUE='\033[0;34m' NC='\033[0m'
+
+WORK_DIR=""
+CLEAN_WORK_DIR=0
+SUDO_KEEPALIVE_PID=""
+LOG_FILE="/tmp/wkstationz-install.log"
 
 fail() { printf '%b\n' "${RED}Error: $*${NC}" >&2; exit 1; }
-if ! { exec 3<>/dev/tty; } 2>/dev/null; then fail "No interactive terminal found. Run from a terminal session."; fi
 
-# Determine script location - handle both direct execution and curl|bash
-if [[ -n "${WKSTATIONZ_WORK_DIR:-}" ]]; then
-    SCRIPT_DIR="$WKSTATIONZ_WORK_DIR"
-    CLEAN_WORK_DIR=0
-else
-    if [[ -n "${BASH_SOURCE[0]:-}" ]]; then
-        SOURCE_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd) || fail "Cannot access script directory."
-    else
-        # When run via curl | bash, use current directory
-        SOURCE_DIR="$(pwd)"
+cleanup() {
+    if [[ -n "$SUDO_KEEPALIVE_PID" ]]; then
+        kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true
     fi
-    [[ -f "$SOURCE_DIR/packages.list" && -f "$SOURCE_DIR/VERSION" ]] || fail "packages.list and VERSION must be present beside install.sh. Clone the complete repository, not just install.sh."
-    SCRIPT_DIR=$(mktemp -d /tmp/wkstationz.XXXXXX)
-    CLEAN_WORK_DIR=1
-    cp -a "$SOURCE_DIR"/. "$SCRIPT_DIR"/
+    if [[ "$CLEAN_WORK_DIR" == 1 && -n "$WORK_DIR" && -d "$WORK_DIR" ]]; then
+        rm -rf -- "$WORK_DIR"
+    fi
+}
+trap cleanup EXIT
+
+if ! { exec 3<>/dev/tty; } 2>/dev/null; then
+    fail "No interactive terminal found. Run from a terminal session."
 fi
-for required in \
-    VERSION packages.list aur-packages.list \
-    scripts/install-yay.sh scripts/apply-theme.sh scripts/enable-services.sh \
-    configs/hyprland/hyprland.lua configs/hyprland/keybinds.lua \
-    configs/hyprland/monitors-desktop.lua configs/hyprland/monitors-laptop.lua \
-    configs/quickshell/config.qml configs/quickshell/Bar.qml configs/quickshell/SettingsPanel.qml \
-    configs/rofi/launcher/launcher.sh configs/kitty/kitty.conf \
-    configs/swaync/config.json configs/gtk-3.0/settings.ini; do
-    [[ -f "$SCRIPT_DIR/$required" ]] || fail "Repository is incomplete: missing $required. Clone the complete wkstationz repository."
-done
-if [[ "$CLEAN_WORK_DIR" == 1 ]]; then
-    trap 'rm -rf -- "$SCRIPT_DIR"' EXIT
-fi
-cd "$SCRIPT_DIR"
-VERSION=$(cat "$SCRIPT_DIR/VERSION")
-printf '%b\n' "${BLUE}wkstationz v$VERSION${NC}"
 
 prompt_choice() {
     local prompt="$1" allowed="$2" answer
@@ -46,9 +34,70 @@ prompt_choice() {
         printf '%s' "$prompt" >/dev/tty
         IFS= read -r -u 3 answer || fail "Terminal input closed while waiting for a choice."
         answer="${answer//[[:space:]]/}"
-        if [[ "$answer" =~ $allowed ]]; then REPLY="$answer"; return; fi
+        if [[ "$answer" =~ $allowed ]]; then
+            REPLY="$answer"
+            return
+        fi
         printf '%b\n' "${YELLOW}Please enter one of the listed choices.${NC}" >/dev/tty
     done
+}
+
+log() { printf '[%s] %s\n' "$(date +'%Y-%m-%d %H:%M:%S')" "$1" | tee -a "$LOG_FILE"; }
+
+download_repository() {
+    WORK_DIR=$(mktemp -d /tmp/wkstationz.XXXXXX)
+    CLEAN_WORK_DIR=1
+    mkdir "$WORK_DIR/repo"
+    printf 'Downloading wkstationz into %s...\n' "$WORK_DIR"
+    curl -fLsS --retry 2 "$ARCHIVE" -o "$WORK_DIR/source.tar.gz" || fail "Could not download repository archive."
+    tar -xzf "$WORK_DIR/source.tar.gz" --strip-components=1 -C "$WORK_DIR/repo" || fail "Could not unpack repository archive."
+    rm -f "$WORK_DIR/source.tar.gz"
+    SCRIPT_DIR="$WORK_DIR/repo"
+}
+
+# Establish source directory.
+if [[ -n "${WKSTATIONZ_WORK_DIR:-}" ]]; then
+    SCRIPT_DIR="$WKSTATIONZ_WORK_DIR"
+elif [[ -n "${BASH_SOURCE[0]:-}" ]]; then
+    SOURCE_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+    if [[ -f "$SOURCE_DIR/packages.list" && -f "$SOURCE_DIR/VERSION" ]]; then
+        WORK_DIR=$(mktemp -d /tmp/wkstationz.XXXXXX)
+        CLEAN_WORK_DIR=1
+        cp -a "$SOURCE_DIR"/. "$WORK_DIR"/
+        SCRIPT_DIR="$WORK_DIR"
+    else
+        download_repository
+    fi
+else
+    download_repository
+fi
+
+for required in \
+    VERSION packages.list aur-packages.list \
+    scripts/install-yay.sh scripts/apply-theme.sh scripts/enable-services.sh \
+    configs/hyprland/hyprland.lua configs/hyprland/keybinds.lua \
+    configs/hyprland/monitors-desktop.lua configs/hyprland/monitors-laptop.lua \
+    configs/quickshell/shell.qml \
+    configs/rofi/launcher/launcher.sh configs/kitty/kitty.conf \
+    configs/swaync/config.json configs/gtk-3.0/settings.ini; do
+    [[ -f "$SCRIPT_DIR/$required" ]] || fail "Repository is incomplete: missing $required"
+done
+
+VERSION=$(tr -d '\r\n[:space:]' < "$SCRIPT_DIR/VERSION")
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "Invalid VERSION: '$VERSION'."
+printf '%b\n' "${BLUE}wkstationz v$VERSION${NC}"
+
+validate_lua() {
+    if ! command -v luac >/dev/null 2>&1; then
+        printf '\nInstalling lua to validate Hyprland configuration...\n'
+        sudo pacman -S --needed --noconfirm lua || fail "Could not install lua for configuration validation."
+    fi
+
+    local file
+    for file in "$SCRIPT_DIR"/configs/hyprland/*.lua; do
+        luac -p "$file" || fail "Invalid Lua syntax in $file. Fix it before installing."
+    done
+    log "Validated Hyprland Lua configuration"
 }
 
 INSTALL_MODE="${WKSTATIONZ_MODE:-}"
@@ -58,7 +107,11 @@ if [[ -z "$INSTALL_MODE" ]]; then
     if [[ -z "$installed" ]]; then
         printf '%s\n' "No installed version found." "1) Install" "2) Update/reapply setup" "3) Exit" >/dev/tty
         prompt_choice "Choose [1-3]: " '^[1-3]$'
-        case "$REPLY" in 1) INSTALL_MODE=install ;; 2) INSTALL_MODE=update ;; 3) exit 0 ;; esac
+        case "$REPLY" in
+            1) INSTALL_MODE=install ;;
+            2) INSTALL_MODE=update ;;
+            3) exit 0 ;;
+        esac
     elif [[ "$installed" == "$VERSION" ]]; then
         printf 'Installed version %s is current.\n' "$installed" >/dev/tty
         printf '%s\n' "1) Update/reapply setup" "2) Exit" >/dev/tty
@@ -66,6 +119,7 @@ if [[ -z "$INSTALL_MODE" ]]; then
         [[ "$REPLY" == 1 ]] || exit 0
         INSTALL_MODE=update
     elif [[ "$(printf '%s\n' "$installed" "$VERSION" | sort -V | tail -n1)" == "$VERSION" ]]; then
+        printf 'New version %s found (installed: %s); updating.\n' "$VERSION" "$installed"
         INSTALL_MODE=update
     else
         printf 'Installed version %s is newer than %s.\n' "$installed" "$VERSION" >/dev/tty
@@ -82,10 +136,8 @@ if [[ "${WKSTATIONZ_SUDO_READY:-0}" != 1 ]]; then
     sudo -v <&3 || fail "Could not obtain sudo privileges."
 fi
 
-# Keep sudo authentication alive while package builds and installation run.
 (while sleep 45; do sudo -n -v 2>/dev/null || exit; done) >/dev/null 2>&1 &
 SUDO_KEEPALIVE_PID=$!
-trap 'kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true; if [[ "$CLEAN_WORK_DIR" == 1 ]]; then rm -rf -- "$SCRIPT_DIR"; fi' EXIT
 
 printf '\nMachine type:\n' >/dev/tty
 printf '%s\n' "1) Desktop (3 monitors)" "2) Laptop (built-in + external)" >/dev/tty
@@ -103,15 +155,14 @@ THEME=catppuccin
 printf '\nKeyboard layout [pt]: ' >/dev/tty
 IFS= read -r -u 3 input_keyboard || fail "Terminal input closed while waiting for keyboard layout."
 [[ -n "$input_keyboard" ]] && KEYBOARD="${input_keyboard//[[:space:]]/}"
+
 printf '\nSetup: %s | Machine: %s | Theme: Catppuccin Mocha | Keyboard: %s\n' "$INSTALL_MODE" "$MACHINE_TYPE" "$KEYBOARD" >/dev/tty
 printf '%s\n' "1) Continue" "2) Cancel" >/dev/tty
 prompt_choice "Choose [1-2]: " '^[1-2]$'
 [[ "$REPLY" == 1 ]] || exit 0
 
-LOG_FILE="/tmp/wkstationz-install.log"
-log() { echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"; }
-trap 'printf "%b\n" "${RED}Installation failed near line $LINENO. See $LOG_FILE.${NC}" >&2' ERR
 log "Starting v$VERSION ($INSTALL_MODE, $MACHINE_TYPE)"
+validate_lua
 
 backup_configs() {
     local name="$1" path="$HOME/.config/$1"
@@ -119,17 +170,23 @@ backup_configs() {
         local backup="$path.backup.$(date +%Y%m%d_%H%M%S)"
         cp -a -- "$path" "$backup"
         printf 'Backed up %s to %s\n' "$name" "$backup"
+        log "Backed up $name to $backup"
     fi
 }
 
 install_packages() {
     printf '\nInstalling/updating packages...\n'
     sudo pacman -Syu --needed --noconfirm
+
     while IFS= read -r package || [[ -n "$package" ]]; do
         [[ -z "$package" || "$package" == \#* ]] && continue
         sudo pacman -S --needed --noconfirm "$package"
     done < "$SCRIPT_DIR/packages.list"
-    if ! command -v yay >/dev/null 2>&1; then bash "$SCRIPT_DIR/scripts/install-yay.sh"; fi
+
+    if ! command -v yay >/dev/null 2>&1; then
+        bash "$SCRIPT_DIR/scripts/install-yay.sh"
+    fi
+
     while IFS= read -r package || [[ -n "$package" ]]; do
         [[ -z "$package" || "$package" == \#* ]] && continue
         yay -S --needed --noconfirm "$package"
@@ -138,6 +195,10 @@ install_packages() {
 
 install_configs() {
     mkdir -p "$HOME/.config"/{hypr,quickshell,rofi,kitty,swaync,gtk-3.0,wkstationz}
+
+    # Remove the exact configs this installer manages so old broken entries do not persist.
+    rm -f "$HOME/.config/hypr/hyprland.lua" "$HOME/.config/hypr/keybinds.lua" "$HOME/.config/hypr/monitors.lua"
+
     cp -a "$SCRIPT_DIR/configs/hyprland/." "$HOME/.config/hypr/"
     cp "$SCRIPT_DIR/configs/hyprland/$MONITOR_CONFIG" "$HOME/.config/hypr/monitors.lua"
     cp -a "$SCRIPT_DIR/configs/quickshell/." "$HOME/.config/quickshell/"
@@ -148,11 +209,16 @@ install_configs() {
     cp -a "$SCRIPT_DIR/scripts" "$HOME/.config/wkstationz/"
     cp -a "$SCRIPT_DIR/themes" "$HOME/.config/wkstationz/"
     cp "$SCRIPT_DIR/VERSION" "$INSTALLED_VERSION_FILE"
+
     chmod +x "$HOME/.config/rofi/launcher/launcher.sh" "$HOME/.config/wkstationz/scripts/"*.sh
-    sed -i "s/kb_layout = .*/kb_layout = $KEYBOARD/" "$HOME/.config/hypr/hyprland.lua"
+    sed -i "s/kb_layout = .*/kb_layout = \"$KEYBOARD\"/" "$HOME/.config/hypr/hyprland.lua"
+
+    # Final post-copy validation against the installed config.
+    luac -p "$HOME/.config/hypr/hyprland.lua" \
+        "$HOME/.config/hypr/keybinds.lua" \
+        "$HOME/.config/hypr/monitors.lua" || fail "Installed Hyprland Lua config failed validation."
 }
 
-# Preserve local edits in both fresh and reapply/update modes.
 for component in hypr quickshell rofi kitty swaync gtk-3.0; do
     backup_configs "$component"
 done
@@ -163,5 +229,9 @@ bash "$SCRIPT_DIR/scripts/apply-theme.sh" "$THEME"
 bash "$SCRIPT_DIR/scripts/enable-services.sh"
 
 printf '\n%b\n' "${GREEN}wkstationz v$VERSION installed successfully.${NC}"
-printf '%s\n' "Machine: $MACHINE_TYPE" "Theme: Catppuccin Mocha" "Keyboard: $KEYBOARD" "Log: $LOG_FILE"
+printf '%s\n' \
+    "Machine: $MACHINE_TYPE" \
+    "Theme: Catppuccin Mocha" \
+    "Keyboard: $KEYBOARD" \
+    "Log: $LOG_FILE"
 log "Installation completed successfully"
